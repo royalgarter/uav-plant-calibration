@@ -8,17 +8,30 @@ const opencv = "opencv";
 
 function main() {
   //Try using pkg-config, but if it fails and it is on Windows, try the fallback
-  exec("pkg-config " + opencv + " " + flag, function(error, stdout, stderr) {
-    if (error) {
-      if (process.platform === "win32") {
-        fallback();
-      } else {
-        throw new Error("ERROR: failed to run: pkg-config", opencv, flag);
-      }
-    } else {
-      console.log(stdout);
+  runPkgConfig("opencv", function(err) {
+    if (err) {
+      runPkgConfig("opencv4", function(err4) {
+        if (err4) {
+          if (process.platform === "win32") {
+            fallback();
+          } else {
+            throw new Error("ERROR: failed to run: pkg-config for opencv or opencv4");
+          }
+        }
+      });
     }
   });
+}
+
+function runPkgConfig(name, cb) {
+    exec("pkg-config " + name + " " + flag, function(error, stdout, stderr) {
+        if (error) {
+            cb(error);
+        } else {
+            console.log(stdout);
+            cb(null);
+        }
+    });
 }
 
 //======================Windows Specific=======================================
