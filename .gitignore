@@ -18,3 +18,4 @@ libopencv_features2d455.dll
 libopencv_flann455.dll
 libopencv_imgcodecs455.dll
 libopencv_imgproc455.dll
+.data/checkboard

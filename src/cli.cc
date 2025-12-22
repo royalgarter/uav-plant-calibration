@@ -6,6 +6,8 @@
 #include <vector>
 #include <filesystem>
 #include <string>
+#include <algorithm>
+#include <cctype>
 
 namespace fs = std::filesystem;
 
@@ -42,8 +44,12 @@ int main(int argc, char** argv) {
 
     for (const auto& entry : fs::directory_iterator(samplesDir)) {
         std::string p = entry.path().string();
+        std::string ext = entry.path().extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(),
+                       [](unsigned char c){ return std::tolower(c); });
+
         // Simple check for jpg/png
-        if (p.find(".jpg") != std::string::npos || p.find(".png") != std::string::npos) {
+        if (ext == ".jpg" || ext == ".png") {
             cv::Mat img = cv::imread(p, cv::IMREAD_GRAYSCALE);
             if (!img.empty()) {
                 images.push_back(img);
