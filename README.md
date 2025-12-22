@@ -17,6 +17,13 @@ cmake ..
 sudo make install
 ```
 
+OR
+```
+npm run install:opencv
+npm run build:cli
+npm run example:cli
+```
+
 ### For mac
 
 ```
