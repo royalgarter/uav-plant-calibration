@@ -7,7 +7,8 @@ A opencv fisheye camera model bindings for Node.js.
 
 **install opencv 3.x**
 
-For linux
+### For linux
+
 ```
 git clone https://github.com/opencv/opencv
 mkdir opencv/build
@@ -16,11 +17,40 @@ cmake ..
 sudo make install
 ```
 
-For mac
+### For mac
+
 ```
 brew tap homebrew/science
 brew install opencv@3
 brew link --force opencv@3
+```
+
+### For window
+
+Required:
+- [MinGW-w64 for Windows](https://winlibs.com/), [Direct](https://github.com/brechtsanders/winlibs_mingw/releases/download/15.2.0posix-13.0.0-msvcrt-r1/winlibs-x86_64-posix-seh-gcc-15.2.0-mingw-w64msvcrt-13.0.0-r1.zip)
+- [CMake - cmake-4.2.1-windows-x86_64.msi](https://cmake.org/download/), [Direct](https://github.com/Kitware/CMake/releases/download/v4.2.1/cmake-4.2.1-windows-x86_64.msi)
+- [OpenCV-4.5.5-x64 | MinGW-Build](https://github.com/huihut/OpenCV-MinGW-Build/tree/master), [Direct](https://github.com/huihut/OpenCV-MinGW-Build/archive/refs/tags/OpenCV-4.5.5-x64.zip)
+
+
+Environment:
+
+```
+set PATH=%PATH%;c:\mingw64\bin\;C:\Program Files\CMake\bin;c:\opencv\x64\mingw\bin
+set OPENCV_DIR=c:\opencv\
+```
+
+Required OpenCV DLL (in case moving executable to other machine):
+- libopencv_calib3d455.dll
+- libopencv_core455.dll
+- libopencv_features2d455.dll
+- libopencv_flann455.dll
+- libopencv_imgcodecs455.dll
+- libopencv_imgproc455.dll
+
+```
+npm run build:cli-win
+npm run example:cli-win
 ```
 
 **install npm package**

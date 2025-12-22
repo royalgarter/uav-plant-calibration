@@ -5,3 +5,16 @@ out_cli.jpg
 fisheye
 data
 out_js.jpg
+CMakeFiles
+.ninja_deps
+.ninja_log
+CMakeCache.txt
+build.ninja
+cmake_install.cmake
+fisheye.exe
+libopencv_calib3d455.dll
+libopencv_core455.dll
+libopencv_features2d455.dll
+libopencv_flann455.dll
+libopencv_imgcodecs455.dll
+libopencv_imgproc455.dll
