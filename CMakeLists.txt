@@ -24,7 +24,7 @@ target_link_libraries(fisheye ${OpenCV_LIBS} user32 gdi32 comctl32)
 set_property(TARGET fisheye PROPERTY CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
 
 # Configure as a Windows GUI application
-set_property(TARGET fisheye PROPERTY WIN32_EXECUTABLE TRUE)
+# set_property(TARGET fisheye PROPERTY WIN32_EXECUTABLE TRUE)
 add_definitions(-D_WIN32_WINNT=0x0601) # Target Windows 7 or later for InitCommonControlsEx
 
 set(BUILD_SHARED_LIBS_DEFAULT OFF)
