@@ -13,9 +13,9 @@
 #include <cctype>
 
 using namespace std;
-using namespace cv;
+using namespace filesystem;
 
-namespace fs = filesystem;
+using namespace cv;
 using namespace cv::fisheye;
 
 // #define WINGUI
@@ -105,7 +105,7 @@ int main(int argc, char** argv) {
 		param3 = argv[3];
 	}
 
-	if (fs::is_directory(param3)) {
+	if (is_directory(param3)) {
 		// Case 1: Folder path (Standard Calibration)
 		samplesDir = param3;
 
@@ -150,12 +150,12 @@ int main(int argc, char** argv) {
 		vector<Mat> images;
 		cout << "Loading samples from " << samplesDir << "..." << endl;
 
-		if (!fs::exists(samplesDir)) {
+		if (!exists(samplesDir)) {
 			cerr << "Error: Samples directory '" << samplesDir << "' not found." << endl;
 			return 1;
 		}
 
-		for (const auto& entry : fs::directory_iterator(samplesDir)) {
+		for (const auto& entry : directory_iterator(samplesDir)) {
 			string p = entry.path().string();
 			string ext = entry.path().extension().string();
 			// Convert ext to lowercase for comparison
@@ -217,7 +217,7 @@ int main(int argc, char** argv) {
 		double error = calibrate(objPoints, imgPoints, size, K, D, noArray(), noArray(), flag, criteria);
 		tok = chrono::high_resolution_clock::now();
 
-		cout << "Calibration done. Reprojection error: " << error << "Time: " << chrono::duration_cast<chrono::milliseconds>(tok - tik).count() << endl;
+		cout << "Calibration done. Reprojection error: " << error << ". Time: " << chrono::duration_cast<chrono::milliseconds>(tok - tik).count() << endl;
 
 		if (exportCalibration) {
 			cout << "Exporting calibration data to " << configFile << "..." << endl;
@@ -259,26 +259,26 @@ int main(int argc, char** argv) {
 	// 3. Undistort & 4. Save
 	cout << "Undistorting images from " << srcPath << " to " << destPath << "..." << endl;
 
-	if (!fs::exists(srcPath) || !fs::is_directory(srcPath)) {
+	if (!exists(srcPath) || !is_directory(srcPath)) {
 		cerr << "Error: Source path '" << srcPath << "' is not a directory." << endl;
 		if (useGui) system("pause");
 		return 1;
 	}
 
-	if (!fs::exists(destPath)) {
-		if (!fs::create_directories(destPath)) {
+	if (!exists(destPath)) {
+		if (!create_directories(destPath)) {
 			cerr << "Error: Could not create destination directory '" << destPath << "'." << endl;
 			if (useGui) system("pause");
 			return 1;
 		}
-	} else if (!fs::is_directory(destPath)) {
+	} else if (!is_directory(destPath)) {
 		cerr << "Error: Destination path '" << destPath << "' is not a directory." << endl;
 		if (useGui) system("pause");
 		return 1;
 	}
 
 	int count = 0;
-	for (const auto& entry : fs::directory_iterator(srcPath)) {
+	for (const auto& entry : directory_iterator(srcPath)) {
 		string p = entry.path().string();
 		if (!entry.is_regular_file()) continue;
 
@@ -305,7 +305,7 @@ int main(int argc, char** argv) {
 			cout << "Time: " << chrono::duration_cast<chrono::milliseconds>(tok - tik).count() << endl;
 
 			string outFilename = filename + "_undistored" + ext;
-			fs::path outPath = fs::path(destPath) / outFilename;
+			path outPath = path(destPath) / outFilename;
 
 			if (imwrite(outPath.string(), undistorted)) {
 				cout << "Saved to " << outPath.string() << endl;
