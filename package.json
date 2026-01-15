@@ -14,6 +14,8 @@
   "scripts": {
     "build:dev": "node-gyp -j 8 rebuild --debug",
     "build": "node-gyp -j 8 rebuild",
+    "build:calib": "g++ -std=c++17 src/calib.cc -o calib -ltiff $(pkg-config --cflags --libs opencv4)",
+    "example:calib": "./calib .data/input .data/output",
     "build:cli": "g++ -std=c++17 src/cli.cc -o fisheye $(node utils/find-opencv.js --cflags) $(node utils/find-opencv.js --libs)",
     "build:cli-win": "cmake --build . --target clean & cmake . & cmake --build .",
     "clean": "node-gyp clean",
@@ -48,6 +50,8 @@
   },
   "dependencies": {
     "bindings": "1.5",
+    "exif-reader": "^2.0.3",
+    "geotiff": "^2.1.4-beta.1",
     "node-addon-api": "^8.0.0"
   },
   "devDependencies": {

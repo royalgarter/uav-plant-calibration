@@ -94,6 +94,9 @@ int main(int argc, char** argv) {
 		checkboardWidth = stoi(promptForInput("4. Enter checkboard width: "));
 		checkboardHeight = stoi(promptForInput("5. Enter checkboard height: "));
 
+		cout << "DIRECT CMD:" << endl;
+		cout << "./fisheye '" << srcPath << "' '" << destPath << "' '" << param3 << "' " << checkboardWidth << " " << checkboardHeight << " "  << endl;
+
 		useTui = true;
 	} else {
 		if (argc < 4) {
