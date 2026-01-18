@@ -1,7 +1,7 @@
 {
-  "name": "@sigodenjs/fisheye",
+  "name": "@royalgarter/uav-calib",
   "version": "0.1.3",
-  "description": "A opencv fisheye camera model bindings for Node.js",
+  "description": "A opencv uav camera calib.",
   "main": "index.js",
   "bin": {
     "fisheyejs": "index.js"
@@ -14,14 +14,18 @@
   "scripts": {
     "build:dev": "node-gyp -j 8 rebuild --debug",
     "build": "node-gyp -j 8 rebuild",
+    "build:calib": "g++ -std=c++17 src/calib.cc -o calib -ltiff $(pkg-config --cflags --libs opencv4)",
+    "build:calib-win": "g++ -std=c++17 src/calib.cc -o window_build/calib -ltiff -Ic:\\libtiff -Ic:\\libtiff\\include -Lc:\\libtiff\\lib -Ic:\\opencv -Ic:\\opencv\\include -Lc:\\opencv\\x64\\mingw\\lib\\ -lopencv_core455 -lopencv_calib3d455 -lopencv_imgcodecs455 -lopencv_imgproc455 -lopencv_video455",
+    "example:calib": "./calib .data/input .data/output",
     "build:cli": "g++ -std=c++17 src/cli.cc -o fisheye $(node utils/find-opencv.js --cflags) $(node utils/find-opencv.js --libs)",
-    "build:cli-win": "cmake --build . --target clean & cmake . & cmake --build .",
-    "clean": "node-gyp clean",
+    "build:cli-win": "g++ -std=c++17 src/cli.cc -o window_build/fisheye -Ic:\\opencv -Ic:\\opencv\\include -Lc:\\opencv\\x64\\mingw\\lib\\ -lopencv_core455 -lopencv_calib3d455 -lopencv_imgcodecs455 -lopencv_imgproc455 -lopencv_video455",
     "example:cli": "./fisheye example/input example/output example/checkboard 9 6",
     "example:cli-win:calibrate": "fisheye.exe example/input example/output example/checkboard 9 6",
     "example:cli-win:export": "fisheye.exe example/input example/output example/checkboard/calibration.txt 9 6",
     "example:cli-win:import": "fisheye.exe example/input example/output example/checkboard/calibration.txt",
-    "release:win": "powershell -Command \"Compress-Archive -Path fisheye.exe, *.dll -DestinationPath release_$(Get-Date -Format 'yyyyMMdd_HHmm').zip -Force\"",
+    "cmake:cli-win": "cmake --build . --target clean & cmake . & cmake --build .",
+    "clean": "node-gyp clean",
+    "release:win": "powershell -Command \"Compress-Archive -Path window_build/ -DestinationPath release_$(Get-Date -Format 'yyyyMMdd_HHmm').zip -Force\"",
     "example:js": "node index.js example/input/IMG-0.jpg out_js.jpg example/checkboard 9 6",
     "install:opencv": "sudo apt update;sudo apt install -y python3 python3-pip python3-dev python3-venv build-essential libopencv-dev python3-opencv",
     "start": "node index.js"
@@ -33,7 +37,7 @@
     "calibrate",
     "undistort"
   ],
-  "author": "Sigoden Huang <sigoden@gmail.com> (https://sigoden.com/)",
+  "author": "royalgarter <royalgarter@gmail.com>, Sigoden Huang <sigoden@gmail.com> (https://sigoden.com/)",
   "license": "MIT",
   "gypfile": true,
   "files": [
@@ -48,6 +52,8 @@
   },
   "dependencies": {
     "bindings": "1.5",
+    "exif-reader": "^2.0.3",
+    "geotiff": "^2.1.4-beta.1",
     "node-addon-api": "^8.0.0"
   },
   "devDependencies": {
