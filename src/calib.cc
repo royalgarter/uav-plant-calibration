@@ -139,7 +139,7 @@ Mat undistortImg(const Mat& img, const ImageInfo& info) {
 }
 
 int main(int argc, char** argv) {
-	cout << "calib" << endl;
+	cout << "UAV Calibration running" << endl;
 
 	string inDir = (argc > 1) ? argv[1] : "input";
 	string outDir = (argc > 2) ? argv[2] : "output";
