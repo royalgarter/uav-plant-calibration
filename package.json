@@ -27,7 +27,7 @@
     "clean": "node-gyp clean",
     "release:win": "powershell -Command \"Compress-Archive -Path window_build/ -DestinationPath release_$(Get-Date -Format 'yyyyMMdd_HHmm').zip -Force\"",
     "example:js": "node index.js example/input/IMG-0.jpg out_js.jpg example/checkboard 9 6",
-    "install:opencv": "sudo apt update;sudo apt install -y python3 python3-pip python3-dev python3-venv build-essential libopencv-dev python3-opencv",
+    "install:opencv": "sudo apt update;sudo apt install -y python3 python3-pip python3-dev python3-venv build-essential libtiff6 libopencv-dev python3-opencv",
     "start": "node index.js"
   },
   "keywords": [
@@ -52,8 +52,6 @@
   },
   "dependencies": {
     "bindings": "1.5",
-    "exif-reader": "^2.0.3",
-    "geotiff": "^2.1.4-beta.1",
     "node-addon-api": "^8.0.0"
   },
   "devDependencies": {
