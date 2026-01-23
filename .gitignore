@@ -2,7 +2,6 @@ node_modules
 build
 *.log
 out_cli.jpg
-fisheye
 data
 out_js.jpg
 CMakeFiles
@@ -18,6 +17,13 @@ undistorted.jpg
 .data
 release_*.zip
 example/output/IMG-0_undistored.jpg
-calib
 calib.exe
 fuck
+libtiff
+example/calib/output/DJI_0081.TIF
+example/calib/output/DJI_0082.TIF
+example/calib/output/DJI_0083.TIF
+example/calib/output/DJI_0084.TIF
+example/calib/output/DJI_0085.TIF
+output.jpg
+output.png
