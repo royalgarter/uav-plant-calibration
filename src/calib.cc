@@ -4,6 +4,8 @@
 #include <sstream>
 #include <vector>
 #include <map>
+#include <cstdio>
+#include <cstring>
 #include <opencv2/core.hpp>
 #include <opencv2/calib3d.hpp>
 #include <opencv2/imgcodecs.hpp>
@@ -34,86 +36,166 @@ struct ImageInfo {
 	bool foundH = false;
 };
 
+// Helper to parse the XML metadata string
+void parseXmlMetadata(const string& xml, ImageInfo& info) {
+	smatch m;
+
+	// CaptureUUID
+	if (regex_search(xml, m, regex(R"(drone-dji:CaptureUUID=([^"]+))") ))
+		info.uuid = m[1];
+
+	// 1. Parse Calibrated Optical Center
+	if (regex_search(xml, m, regex(R"(drone-dji:CalibratedOpticalCenterX=\"([^"]+)\")") ))
+		info.calibratedCx = stod(m[1]);
+	if (regex_search(xml, m, regex(R"(drone-dji:CalibratedOpticalCenterY=\"([^"]+)\")") ))
+		info.calibratedCy = stod(m[1]);
+
+	// 2. Parse Relative Optical Center
+	if (regex_search(xml, m, regex(R"(drone-dji:RelativeOpticalCenterX=\"([^"]+)\")") ))
+		info.relX = stod(m[1]);
+	if (regex_search(xml, m, regex(R"(drone-dji:RelativeOpticalCenterY=\"([^"]+)\")") ))
+		info.relY = stod(m[1]);
+
+	cout << info.filename << ", " << info.calibratedCx << ", " << info.calibratedCy << ", " << info.relX << ", " << info.relY << '\n';
+
+	// 3. Parse DewarpData
+	if (regex_search(xml, m, regex(R"(drone-dji:DewarpData=\"([^"]+)\")") )) {
+		string dataStr = m[1];
+		size_t semiPos = dataStr.find(';');
+
+		cout << dataStr << '\n';
+
+		if (semiPos != string::npos) {
+			string paramsStr = dataStr.substr(semiPos + 1);
+			stringstream ss(paramsStr);
+			string segment;
+			vector<double> v;
+			while(getline(ss, segment, ',')) v.push_back(stod(segment));
+
+			if (v.size() >= 9) {
+				info.fx = v[0]; info.fy = v[1];
+				info.cx_d = v[2]; info.cy_d = v[3];
+				info.k1 = v[4]; info.k2 = v[5]; info.p1 = v[6]; info.p2 = v[7]; info.k3 = v[8];
+				info.foundDistortion = true;
+			}
+		}
+	}
+
+	// 4. DJI Matrix
+	if (regex_search(xml, m, regex(R"(drone-dji:DewarpHMatrix=\"([^"]+)\")") )) {
+		string matrixStr = m[1];
+		cout << matrixStr << '\n';
+		stringstream ss(matrixStr);
+		string segment;
+		vector<double> values;
+		while(getline(ss, segment, ',')) {
+			values.push_back(stod(segment));
+		}
+		if (values.size() == 9) {
+			for(int i=0; i<3; i++) {
+				for(int j=0; j<3; j++) {
+					info.H.at<double>(i, j) = values[i*3 + j];
+				}
+			}
+			info.foundH = true;
+		}
+	}
+}
+
+string getXmpFromJpeg(const string& filename) {
+    FILE* f = fopen(filename.c_str(), "rb");
+    if (!f) return "";
+
+    uint8_t buf[256];
+    // Read SOI
+    if (fread(buf, 1, 2, f) != 2 || buf[0] != 0xFF || buf[1] != 0xD8) {
+        fclose(f);
+        return "";
+    }
+
+    while (true) {
+        if (fread(buf, 1, 2, f) != 2) break; // Read marker
+        if (buf[0] != 0xFF) break; // Not a marker
+        uint8_t marker = buf[1];
+
+        // Read length
+        uint8_t lenBuf[2];
+        if (fread(lenBuf, 1, 2, f) != 2) break;
+        uint16_t len = (lenBuf[0] << 8) | lenBuf[1];
+        uint16_t contentLen = len - 2;
+
+        if (marker == 0xE1) { // APP1
+             // Check for XMP header
+             // "http://ns.adobe.com/xap/1.0/\0" is 29 bytes
+             if (contentLen > 29) {
+                 char header[29];
+                 if (fread(header, 1, 29, f) != 29) break;
+                 if (memcmp(header, "http://ns.adobe.com/xap/1.0/", 29) == 0) {
+                     // Found XMP
+                     string xmp;
+                     xmp.resize(contentLen - 29);
+                     if (fread(&xmp[0], 1, contentLen - 29, f) != contentLen - 29) break;
+                     fclose(f);
+                     return xmp;
+                 } else {
+                     // Not XMP, skip rest of segment
+                     fseek(f, contentLen - 29, SEEK_CUR);
+                 }
+             } else {
+                 fseek(f, contentLen, SEEK_CUR);
+             }
+        } else if (marker == 0xD9 || marker == 0xDA) {
+            // EOI or SOS - stop scanning
+            break;
+        } else {
+            // Skip other segments
+            fseek(f, contentLen, SEEK_CUR);
+        }
+    }
+    fclose(f);
+    return "";
+}
+
 ImageInfo parseMetadata(const string& filePath) {
 	ImageInfo info;
 	info.path = filePath;
 	info.filename = path(filePath).filename().string();
 	info.ext = info.filename.substr(info.filename.find_last_of(".") + 1);
 
-	TIFF* tif = TIFFOpen(filePath.c_str(), "r");
-	if (tif) {
-		TIFFGetField(tif, TIFFTAG_IMAGEWIDTH, &info.width);
-		TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &info.height);
+	// Check for TIFF extension before trying TIFFOpen to avoid warnings/errors on JPEGs
+	bool isTiff = (info.ext == "tif" || info.ext == "TIF" || info.ext == "tiff" || info.ext == "TIFF");
 
-		void* data;
-		uint32_t len;
-		if (TIFFGetField(tif, 700, &len, &data)) {
-			string xml((char*)data, len);
-			smatch m;
+	if (isTiff) {
+		TIFF* tif = TIFFOpen(filePath.c_str(), "r");
+		if (tif) {
+			TIFFGetField(tif, TIFFTAG_IMAGEWIDTH, &info.width);
+			TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &info.height);
 
-			// CaptureUUID
-			if (regex_search(xml, m, regex(R"(drone-dji:CaptureUUID=([^"]+))") ))
-				info.uuid = m[1];
-
-			// 1. Parse Calibrated Optical Center
-			if (regex_search(xml, m, regex(R"(drone-dji:CalibratedOpticalCenterX=\"([^"]+)\")") ))
-				info.calibratedCx = stod(m[1]);
-			if (regex_search(xml, m, regex(R"(drone-dji:CalibratedOpticalCenterY=\"([^"]+)\")") ))
-				info.calibratedCy = stod(m[1]);
-
-			// 2. Parse Relative Optical Center
-			if (regex_search(xml, m, regex(R"(drone-dji:RelativeOpticalCenterX=\"([^"]+)\")") ))
-				info.relX = stod(m[1]);
-			if (regex_search(xml, m, regex(R"(drone-dji:RelativeOpticalCenterY=\"([^"]+)\")") ))
-				info.relY = stod(m[1]);
-
-			cout << info.filename << ", " << info.calibratedCx << ", " << info.calibratedCy << ", " << info.relX << ", " << info.relY << '\n';
-
-			// 3. Parse DewarpData
-			if (regex_search(xml, m, regex(R"(drone-dji:DewarpData=\"([^"]+)\")") )) {
-				string dataStr = m[1];
-				size_t semiPos = dataStr.find(';');
-
-				cout << dataStr << '\n';
-
-				if (semiPos != string::npos) {
-					string paramsStr = dataStr.substr(semiPos + 1);
-					stringstream ss(paramsStr);
-					string segment;
-					vector<double> v;
-					while(getline(ss, segment, ',')) v.push_back(stod(segment));
-
-					if (v.size() >= 9) {
-						info.fx = v[0]; info.fy = v[1];
-						info.cx_d = v[2]; info.cy_d = v[3];
-						info.k1 = v[4]; info.k2 = v[5]; info.p1 = v[6]; info.p2 = v[7]; info.k3 = v[8];
-						info.foundDistortion = true;
-					}
-				}
+			void* data;
+			uint32_t len;
+			if (TIFFGetField(tif, 700, &len, &data)) {
+				string xml((char*)data, len);
+				parseXmlMetadata(xml, info);
 			}
-
-			// 4. DJI Matrix
-			if (regex_search(xml, m, regex(R"(drone-dji:DewarpHMatrix=\"([^"]+)\")") )) {
-				string matrixStr = m[1];
-				cout << matrixStr << '\n';
-				stringstream ss(matrixStr);
-				string segment;
-				vector<double> values;
-				while(getline(ss, segment, ',')) {
-					values.push_back(stod(segment));
-				}
-				if (values.size() == 9) {
-					for(int i=0; i<3; i++) {
-						for(int j=0; j<3; j++) {
-							info.H.at<double>(i, j) = values[i*3 + j];
-						}
-					}
-					info.foundH = true;
-				}
-			}
+			TIFFClose(tif);
+			return info;
 		}
-		TIFFClose(tif);
 	}
+
+	// Fallback for non-TIFF files (like JPG) or if TIFF parsing failed
+	// 1. Try to read XMP from JPEG structure
+	string xmp = getXmpFromJpeg(filePath);
+	if (!xmp.empty()) {
+		parseXmlMetadata(xmp, info);
+	}
+
+	// 2. Read dimensions via OpenCV (robust fallback)
+	Mat img = imread(filePath, IMREAD_UNCHANGED);
+	if (!img.empty()) {
+		info.width = img.cols;
+		info.height = img.rows;
+	}
+
 	return info;
 }
 
@@ -138,13 +220,23 @@ Mat undistortImg(const Mat& img, const ImageInfo& info) {
 	return img.clone();
 }
 
+
+bool usage() {
+	cout << "USAGE: ./calib <src_dir> <dest_dir>" << endl;
+	cout << "---" << endl;
+
+	return 1;
+}
+
+
 int main(int argc, char** argv) {
-	cout << "UAV Calibration running" << endl;
 
 	string inDir = (argc > 1) ? argv[1] : "input";
 	string outDir = (argc > 2) ? argv[2] : "output";
 
-	if (!exists(inDir)) return 1;
+	if (!exists(inDir)) return usage();
+
+	cout << "UAV Calibration running" << endl;
 	create_directories(outDir);
 
 	vector<ImageInfo> allImages;
@@ -152,7 +244,12 @@ int main(int argc, char** argv) {
 	for (const auto& entry : directory_iterator(inDir)) {
 		string path = entry.path().string();
 		string ext = entry.path().extension().string();
-		if (path.find(".tif") == string::npos && path.find(".TIF") == string::npos) continue;
+		if (
+            path.find(".tif") == string::npos 
+            && path.find(".TIF") == string::npos
+            && path.find(".jpg") == string::npos
+            && path.find(".JPG") == string::npos           
+        ) continue;
 
 		allImages.push_back(parseMetadata(path));
 	}
@@ -192,18 +289,24 @@ int main(int argc, char** argv) {
 		}
 
 		for (auto& info : group) {
+			cout << "  --- " << endl;
+
 			Mat raw = imread(info.path, IMREAD_UNCHANGED | IMREAD_ANYDEPTH | IMREAD_ANYCOLOR);
 			if (raw.empty()) continue;
 
+			// --- STEP A: DEWARP ALIGNMENT (Metadata) ---
+			cout << "  Step A " << info.filename << endl;
 			Mat dewarped = undistortImg(raw, info);
 			Mat finalImg;
 
 			// --- STEP B: INITIAL ALIGNMENT (Metadata) ---
 			Mat H_meta = Mat::eye(3, 3, CV_64F);
 			if (info.foundH) {
+				cout << "  Step B: H_meta " << info.filename << endl;
 				H_meta = info.H;
 			} else if (abs(info.relX) > 0.0001 || abs(info.relY) > 0.0001) {
 				// Translation
+				cout << "  Step B: relXY " << info.filename << endl;
 				H_meta.at<double>(0, 2) = info.relX;
 				H_meta.at<double>(1, 2) = info.relY;
 			}
@@ -211,8 +314,10 @@ int main(int argc, char** argv) {
 			// --- STEP C: OPTIONAL FINE TUNING (ECC) ---
 			Mat H_total = H_meta.clone();
 
+			cout << "  H_meta: " << H_meta << endl;
+
 			if (refInfo && refInfo->path != info.path && !refMat.empty()) {
-				cout << "  Aligning " << info.filename << " to " << refInfo->filename << " using ECC..." << endl;
+				cout << "  Step C: Aligning " << info.filename << " to " << refInfo->filename << " using ECC..." << endl;
 
 				// 1. Apply metadata warp first to get close
 				Mat alignedMeta;
@@ -250,6 +355,8 @@ int main(int argc, char** argv) {
 					double cc = findTransformECC(refGray, alignedGray, H_ecc, motionType, criteria);
 					cout << "    ECC converged (cc=" << cc << ")" << endl;
 
+					cout << "  H_ecc: " << H_ecc << endl;
+
 					// 4. Compose transforms
 					// H_meta maps: Dst (Aligned) -> Src (Original)
 					// H_ecc maps: Dst (Ref) -> Src (Aligned)  [Backward mapping for WARP_INVERSE_MAP]
@@ -277,7 +384,9 @@ int main(int argc, char** argv) {
 				}
 			}
 
+			cout << "  H_total: " << H_total << endl;
 			cout << "  Saving " << info.filename << endl;
+
 			warpPerspective(dewarped, finalImg, H_total, dewarped.size(), INTER_LINEAR | WARP_INVERSE_MAP);
 			imwrite(outDir + "/" + info.filename, finalImg);
 		}
