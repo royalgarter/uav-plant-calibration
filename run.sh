@@ -81,6 +81,10 @@ case "$1" in
         ;;
     *)
         echo "Usage: $0 {command}"
+        echo ""
+        echo "Available commands:"
+        grep -E '^\s*".*"\)' $0 | sed 's/^[[:space:]]*"\([^"]*\)").*/  \1/'
+        echo ""
         echo "Example: $0 build:calib"
         exit 1
         ;;
