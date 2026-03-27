@@ -44,13 +44,13 @@ case "$1" in
         run_cmd ./calib example/calib/input example/calib/output
         ;;
     "example:calib-radio")
-        run_cmd ./calib example/calib/input example/calib/output --radio
+        run_cmd ./calib example/calib/input example/calib/output --radio 0,25
         ;;
     "example:calib-win")
         run_cmd ./window_build/calib.exe ./example/calib/input/ ./example/calib/output/
         ;;
     "example:calib-win-radio")
-        run_cmd ./window_build/calib.exe ./example/calib/input/ ./example/calib/output/ --radio
+        run_cmd ./window_build/calib.exe ./example/calib/input/ ./example/calib/output/ --radio 0,25
         ;;
     "build:fisheye")
         run_cmd $CC $CFLAGS src/cli.cc -o fisheye $(node utils/find-opencv.js --cflags) $(node utils/find-opencv.js --libs) $LIBS
