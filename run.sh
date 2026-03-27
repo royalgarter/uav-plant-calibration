@@ -38,30 +38,39 @@ case "$1" in
         run_cmd $MINGW $CFLAGS src/calib.cc -o calib -ltiff -Ilibtiff -Ilibtiff/include -Llibtiff/lib $(pkg-config --cflags --libs opencv4) $LIBS
         ;;
     "build:calib-win")
-        run_cmd $CC $CFLAGS src/calib.cc -o window_build/calib -ltiff -Ilibtiff -Ilibtiff/include -Llibtiff/lib -Ic:/opencv -Ic:/opencv/include -Lc:/opencv/x64/mingw/lib/ -lopencv_core455 -lopencv_calib3d455 -lopencv_imgcodecs455 -lopencv_imgproc455 -lopencv_video455 $LIBS
+        run_cmd $CC $CFLAGS src/calib.cc -o window_build/calib -ltiff -Ilibtiff -Ilibtiff/include -Llibtiff/lib -Ic:/opencv -Ic:/opencv/include -Lc:/opencv/x64/mingw/lib/ -lopencv_core455 -lopencv_calib3d455 -lopencv_imgcodecs455 -lopencv_imgproc455 -lopencv_video455 -lopencv_highgui455 $LIBS
         ;;
     "example:calib")
         run_cmd ./calib example/calib/input example/calib/output
         ;;
-    "build:cli")
+    "example:calib-radio")
+        run_cmd ./calib example/calib/input example/calib/output --radio
+        ;;
+    "example:calib-win")
+        run_cmd ./window_build/calib.exe ./example/calib/input/ ./example/calib/output/
+        ;;
+    "example:calib-win-radio")
+        run_cmd ./window_build/calib.exe ./example/calib/input/ ./example/calib/output/ --radio
+        ;;
+    "build:fisheye")
         run_cmd $CC $CFLAGS src/cli.cc -o fisheye $(node utils/find-opencv.js --cflags) $(node utils/find-opencv.js --libs) $LIBS
         ;;
-    "build:cli-win")
-        run_cmd $CC $CFLAGS src/cli.cc -o window_build/fisheye -Ic:/opencv -Ic:/opencv/include -Lc:/opencv/x64/mingw/lib/ -lopencv_core455 -lopencv_calib3d455 -lopencv_imgcodecs455 -lopencv_imgproc455 -lopencv_video455 $LIBS
+    "build:fisheye-win")
+        run_cmd $CC $CFLAGS src/cli.cc -o window_build/fisheye -Ic:/opencv -Ic:/opencv/include -Lc:/opencv/x64/mingw/lib/ -lopencv_core455 -lopencv_calib3d455 -lopencv_imgcodecs455 -lopencv_imgproc455 -lopencv_video455 -lopencv_highgui455 $LIBS
         ;;
-    "example:cli")
+    "example:fisheye")
         run_cmd ./fisheye example/fisheye/input example/fisheye/output example/fisheye/checkboard 9 6
         ;;
-    "example:cli-win:calibrate")
+    "example:fisheye-win:calibrate")
         run_cmd ./window_build/fisheye.exe example/fisheye/input example/fisheye/output example/fisheye/checkboard 9 6
         ;;
-    "example:cli-win:export")
+    "example:fisheye-win:export")
         run_cmd ./window_build/fisheye.exe example/fisheye/input example/fisheye/output example/fisheye/checkboard/calibration.txt 9 6
         ;;
-    "example:cli-win:import")
+    "example:fisheye-win:import")
         run_cmd ./window_build/fisheye.exe example/fisheye/input example/fisheye/output example/fisheye/checkboard/calibration.txt
         ;;
-    "cmake:cli-win")
+    "cmake:fisheye-win")
         run_cmd cmake --build . --target clean && run_cmd cmake . && run_cmd cmake --build .
         ;;
     "clean")

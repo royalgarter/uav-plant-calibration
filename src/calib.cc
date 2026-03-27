@@ -11,6 +11,7 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/video.hpp> // For findTransformECC
+#include <opencv2/highgui.hpp>
 #include <tiffio.h>
 
 using namespace std;
@@ -220,9 +221,131 @@ Mat undistortImg(const Mat& img, const ImageInfo& info) {
 	return img.clone();
 }
 
+// --- RADIOMETRIC CALIBRATION ---
+
+struct RadioCoeffs {
+	double a = 1.0;
+	double b = 0.0;
+	bool valid = false;
+};
+
+struct RadioState {
+	Point anchor;
+	bool clicked = false;
+};
+
+void onMouseRadio(int event, int x, int y, int flags, void* userdata) {
+	if (event == EVENT_LBUTTONDOWN) {
+		RadioState* state = (RadioState*)userdata;
+		state->anchor = Point(x, y);
+		state->clicked = true;
+	}
+}
+
+RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point interval) {
+	RadioState state;
+	Mat display;
+	RadioCoeffs coeffs;
+
+	// For display, we need 8-bit. We'll use a local normalization for viewing.
+	if (img.depth() != CV_8U) {
+		double minVal, maxVal;
+		minMaxLoc(img, &minVal, &maxVal);
+		if (maxVal == minVal) maxVal = minVal + 1.0;
+		img.convertTo(display, CV_8U, 255.0 / (maxVal - minVal), -minVal * 255.0 / (maxVal - minVal));
+	} else {
+		display = img.clone();
+	}
+
+	if (display.channels() == 1) cvtColor(display, display, COLOR_GRAY2BGR);
+
+	string winName = "Radiometric Calibration - " + filename;
+	namedWindow(winName, WINDOW_NORMAL);
+	setMouseCallback(winName, onMouseRadio, &state);
+
+	cout << "Radiometric Calibration for " << filename << ":" << endl;
+	cout << "  Click on the center of the 56% patch (usually the brightest/leftmost)." << endl;
+	cout << "  The next 3 patches (36%, 12%, 3%) will be sampled automatically with interval (" << interval.x << "," << interval.y << ")." << endl;
+	cout << "  Press ESC to skip calibration for this group." << endl;
+
+	while (!state.clicked) {
+		imshow(winName, display);
+		int key = waitKey(10);
+		if (key == 27) { // ESC
+			destroyWindow(winName);
+			cout << "  Skipped." << endl;
+			return coeffs;
+		}
+	}
+
+	// Sampling
+	vector<double> dns;
+	vector<double> targets = {0.5647, 0.3582, 0.1148, 0.0272};
+	int boxSize = 10;
+
+	for (int i = 0; i < 4; ++i) {
+		int cx = state.anchor.x + i * interval.x;
+		int cy = state.anchor.y + i * interval.y;
+
+		Rect roi(cx - boxSize / 2, cy - boxSize / 2, boxSize, boxSize);
+		// boundary check
+		roi &= Rect(0, 0, img.cols, img.rows);
+
+		if (roi.area() > 0) {
+			Scalar avg = mean(img(roi));
+			dns.push_back(avg[0]);
+			rectangle(display, roi, Scalar(0, 255, 0), 1);
+		} else {
+			dns.push_back(0);
+		}
+	}
+
+	imshow(winName, display);
+	waitKey(500);
+	destroyWindow(winName);
+
+	// Regression: y = ax + b
+	// Y = [targets], X = [dns, 1]
+	Mat X(4, 2, CV_64F);
+	Mat Y(4, 1, CV_64F);
+	for (int i = 0; i < 4; ++i) {
+		X.at<double>(i, 0) = dns[i];
+		X.at<double>(i, 1) = 1.0;
+		Y.at<double>(i, 0) = targets[i];
+	}
+
+	Mat sol;
+	solve(X, Y, sol, DECOMP_SVD);
+	coeffs.a = sol.at<double>(0, 0);
+	coeffs.b = sol.at<double>(1, 0);
+	coeffs.valid = true;
+
+	cout << "  Coefficients calculated: a=" << coeffs.a << ", b=" << coeffs.b << endl;
+	return coeffs;
+}
+
+Mat applyRadiometricCalibration(const Mat& img, RadioCoeffs coeffs) {
+	if (!coeffs.valid) return img.clone();
+
+	Mat calibrated;
+	img.convertTo(calibrated, CV_64F, coeffs.a, coeffs.b);
+
+	// Normalizing to 0-255 based on min/max of the calibrated image (per Python logic)
+	double minR, maxR;
+	minMaxLoc(calibrated, &minR, &maxR);
+	if (maxR == minR) maxR = minR + 1.0;
+	
+	Mat normalized;
+	calibrated.convertTo(normalized, CV_8U, 255.0 / (maxR - minR), -minR * 255.0 / (maxR - minR));
+
+	return normalized;
+}
+
 
 bool usage() {
-	cout << "USAGE: ./calib <src_dir> <dest_dir>" << endl;
+	cout << "USAGE: ./calib <src_dir> <dest_dir> [--radio [x,y]]" << endl;
+	cout << "  --radio       Enable radiometric calibration. Optional interval (default 40,0)." << endl;
+	cout << "                Example: --radio 10,-40" << endl;
 	cout << "---" << endl;
 
 	return 1;
@@ -231,12 +354,37 @@ bool usage() {
 
 int main(int argc, char** argv) {
 
-	string inDir = (argc > 1) ? argv[1] : "input";
-	string outDir = (argc > 2) ? argv[2] : "output";
+	string inDir = "input";
+	string outDir = "output";
+	bool doRadio = false;
+	Point radioInterval(40, 0);
+
+	vector<string> args;
+	for (int i = 1; i < argc; ++i) {
+		string arg = argv[i];
+		if (arg == "--radio") {
+			doRadio = true;
+			if (i + 1 < argc && argv[i+1][0] != '-') {
+				string nextArg = argv[i+1];
+				size_t comma = nextArg.find(',');
+				if (comma != string::npos) {
+					radioInterval.x = stoi(nextArg.substr(0, comma));
+					radioInterval.y = stoi(nextArg.substr(comma + 1));
+					i++;
+				}
+			}
+		} else {
+			args.push_back(arg);
+		}
+	}
+
+	if (args.size() > 0) inDir = args[0];
+	if (args.size() > 1) outDir = args[1];
 
 	if (!exists(inDir)) return usage();
 
 	cout << "UAV Calibration running" << endl;
+	if (doRadio) cout << "Radiometric calibration ENABLED with interval (" << radioInterval.x << "," << radioInterval.y << ")" << endl;
 	create_directories(outDir);
 
 	// Group by prefix (filename without extension, minus last character)
@@ -273,11 +421,31 @@ int main(int argc, char** argv) {
 			}
 		}
 
+		RadioCoeffs groupCoeffs;
+		if (doRadio) {
+			if (refInfo) {
+				Mat rawRef = imread(refInfo->path, IMREAD_UNCHANGED | IMREAD_ANYDEPTH | IMREAD_ANYCOLOR);
+				if (!rawRef.empty()) {
+					groupCoeffs = getRadiometricCoeffs(rawRef, refInfo->filename, radioInterval);
+				}
+			} else if (!group.empty()) {
+				// Fallback to first image if no reference found
+				Mat rawFirst = imread(group[0].path, IMREAD_UNCHANGED | IMREAD_ANYDEPTH | IMREAD_ANYCOLOR);
+				if (!rawFirst.empty()) {
+					groupCoeffs = getRadiometricCoeffs(rawFirst, group[0].filename, radioInterval);
+				}
+			}
+		}
+
 		if (refInfo) {
 			cout << "  Reference found: " << refInfo->filename << endl;
 			Mat rawRef = imread(refInfo->path, IMREAD_UNCHANGED | IMREAD_ANYDEPTH | IMREAD_ANYCOLOR);
 			if (!rawRef.empty()) {
-				refMat = undistortImg(rawRef, *refInfo);
+				Mat processedRef = rawRef;
+				if (doRadio && groupCoeffs.valid) {
+					processedRef = applyRadiometricCalibration(rawRef, groupCoeffs);
+				}
+				refMat = undistortImg(processedRef, *refInfo);
 			}
 		} else {
 			cout << "  No reference image found for group " << prefix << endl;
@@ -289,10 +457,16 @@ int main(int argc, char** argv) {
 			Mat raw = imread(info.path, IMREAD_UNCHANGED | IMREAD_ANYDEPTH | IMREAD_ANYCOLOR);
 			if (raw.empty()) continue;
 
+			Mat processed = raw;
+			if (doRadio && groupCoeffs.valid) {
+				processed = applyRadiometricCalibration(raw, groupCoeffs);
+			}
+
 			// --- STEP A: DEWARP ALIGNMENT (Metadata) ---
 			cout << "  Step A " << info.filename << endl;
-			Mat dewarped = undistortImg(raw, info);
+			Mat dewarped = undistortImg(processed, info);
 			Mat finalImg;
+
 
 			// --- STEP B: INITIAL ALIGNMENT (Metadata) ---
 			Mat H_meta = Mat::eye(3, 3, CV_64F);
