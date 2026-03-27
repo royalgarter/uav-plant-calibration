@@ -239,33 +239,28 @@ int main(int argc, char** argv) {
 	cout << "UAV Calibration running" << endl;
 	create_directories(outDir);
 
-	vector<ImageInfo> allImages;
+	// Group by prefix (filename without extension, minus last character)
+	map<string, vector<string>> groups;
 	cout << "Scanning " << inDir << "..." << endl;
 	for (const auto& entry : directory_iterator(inDir)) {
 		string path = entry.path().string();
+		string stem = entry.path().stem().string();
 		string ext = entry.path().extension().string();
-		if (
-            path.find(".tif") == string::npos 
-            && path.find(".TIF") == string::npos
-            && path.find(".jpg") == string::npos
-            && path.find(".JPG") == string::npos           
-        ) continue;
 
-		allImages.push_back(parseMetadata(path));
+		if (ext != ".tif" && ext != ".TIF" && ext != ".jpg" && ext != ".JPG") continue;
+		if (stem.empty()) continue;
+
+		string prefix = stem.substr(0, stem.length() - 1);
+		groups[prefix].push_back(path);
 	}
 
-	// Group by UUID
-	map<string, vector<ImageInfo>> groups;
-	for (const auto& info : allImages) {
-		if (!info.uuid.empty()) {
-			groups[info.uuid].push_back(info);
-		} else {
-			groups["unknown"].push_back(info);
+	for (auto& [prefix, paths] : groups) {
+		cout << "Processing group: " << prefix << " (" << paths.size() << " images)" << endl;
+
+		vector<ImageInfo> group;
+		for (const auto& p : paths) {
+			group.push_back(parseMetadata(p));
 		}
-	}
-
-	for (auto& [uuid, group] : groups) {
-		cout << "Processing group: " << uuid << " (" << group.size() << " images)" << endl;
 
 		ImageInfo* refInfo = nullptr;
 		Mat refMat;
@@ -285,7 +280,7 @@ int main(int argc, char** argv) {
 				refMat = undistortImg(rawRef, *refInfo);
 			}
 		} else {
-			cout << "  No reference image found for group " << uuid << endl;
+			cout << "  No reference image found for group " << prefix << endl;
 		}
 
 		for (auto& info : group) {
