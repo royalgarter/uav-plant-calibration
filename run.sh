@@ -1,27 +1,25 @@
-#!/bin/sh
+#!/bin/bash
 
 # Use gcc to compile C++ files
 CC="gcc"
 MINGW="x86_64-w64-mingw32-gcc"
-CFLAGS="-std=c++17"
+CFLAGS="-Wall -Wextra -pedantic -std=c++17"
 # Link the C++ standard library at the end
 LIBS="-lstdc++"
 
-# Helper for cross-platform commands
-case "$(uname -s)" in
-    MSYS*|MINGW*|CYGWIN*)
-        PS_CMD="powershell.exe"
-        ;;
-    *)
-        PS_CMD="pwsh" # or powershell if installed on Linux
-        ;;
-esac
+if [[ "$1" == *"win"* ]]; then
+    echo "OS: window"
+    PS_CMD="powershell.exe -Command"
+else
+    echo "OS: linux"
+    PS_CMD=""
+    
+fi
 
 run_cmd() {
-    echo "EXECUTING:"
     echo "$@"
-    echo ""
-    "$@"
+    echo "---"
+    $PS_CMD "$@"
 }
 
 case "$1" in
@@ -77,7 +75,7 @@ case "$1" in
         run_cmd node-gyp clean
         ;;
     "release:win")
-        run_cmd $PS_CMD -Command "Compress-Archive -Path window_build/ -DestinationPath release_$(date +'%Y%m%d_%H%M').zip -Force"
+        run_cmd Compress-Archive -Path window_build/ -DestinationPath release_$(date +'%Y%m%d_%H%M').zip -Force
         ;;
     "example:js")
         run_cmd node index.js example/input/IMG-0.jpg out_js.jpg example/checkboard 9 6
