@@ -401,8 +401,15 @@ int main(int argc, char** argv) {
 	if (doRadio) cout << "Radiometric calibration ENABLED with interval (" << radioInterval.x << "," << radioInterval.y << ")" << endl;
 	create_directories(outDir);
 
-	// Group by prefix (filename without extension, minus last character)
-	map<string, vector<string>> groups;
+	// Step 1: Scan and Parse Metadata for all groups
+	struct GroupData {
+		string prefix;
+		vector<ImageInfo> images;
+		ImageInfo* refInfo = nullptr;
+		RadioCoeffs coeffs;
+	};
+	map<string, GroupData> allGroups;
+
 	cout << "Scanning " << inDir << "..." << endl;
 	for (const auto& entry : directory_iterator(inDir)) {
 		string path = entry.path().string();
@@ -413,74 +420,73 @@ int main(int argc, char** argv) {
 		if (stem.empty()) continue;
 
 		string prefix = stem.substr(0, stem.length() - 1);
-		groups[prefix].push_back(path);
+		allGroups[prefix].prefix = prefix;
+		allGroups[prefix].images.push_back(parseMetadata(path));
 	}
 
-	for (auto& [prefix, paths] : groups) {
-		cout << "Processing group: " << prefix << " (" << paths.size() << " images)" << endl;
-
-		vector<ImageInfo> group;
-		for (const auto& p : paths) {
-			group.push_back(parseMetadata(p));
-		}
-
-		ImageInfo* refInfo = nullptr;
-		Mat refMat;
-
-		for (auto& info : group) {
+	// Identify reference images for each group
+	for (auto& [prefix, data] : allGroups) {
+		for (auto& info : data.images) {
 			if (abs(info.relX) < 0.001 && abs(info.relY) < 0.001) {
-				cout << info.filename << ", " << info.relX << ", " << info.relY << '\n';
-				refInfo = &info;
+				data.refInfo = &info;
 				break;
 			}
 		}
+	}
 
-		RadioCoeffs groupCoeffs;
-		if (doRadio) {
-			if (refInfo) {
-				Mat rawRef = imread(refInfo->path, IMREAD_UNCHANGED | IMREAD_ANYDEPTH | IMREAD_ANYCOLOR);
-				if (!rawRef.empty()) {
-					groupCoeffs = getRadiometricCoeffs(rawRef, refInfo->filename, radioInterval);
-				}
-			} else if (!group.empty()) {
-				// Fallback to first image if no reference found
-				Mat rawFirst = imread(group[0].path, IMREAD_UNCHANGED | IMREAD_ANYDEPTH | IMREAD_ANYCOLOR);
-				if (!rawFirst.empty()) {
-					groupCoeffs = getRadiometricCoeffs(rawFirst, group[0].filename, radioInterval);
+	// Step 2: Collect Radiometric Calibration inputs for ALL groups upfront
+	if (doRadio) {
+		cout << "\n--- RADIOMETRIC CALIBRATION PHASE ---" << endl;
+		for (auto& [prefix, data] : allGroups) {
+			ImageInfo* targetInfo = data.refInfo;
+			if (!targetInfo && !data.images.empty()) {
+				targetInfo = &data.images[0];
+			}
+
+			if (targetInfo) {
+				Mat raw = imread(targetInfo->path, IMREAD_UNCHANGED | IMREAD_ANYDEPTH | IMREAD_ANYCOLOR);
+				if (!raw.empty()) {
+					data.coeffs = getRadiometricCoeffs(raw, targetInfo->filename, radioInterval);
 				}
 			}
 		}
+		cout << "--- CALIBRATION PHASE COMPLETE ---\n" << endl;
+	}
 
-		if (refInfo) {
-			cout << "  Reference found: " << refInfo->filename << endl;
-			Mat rawRef = imread(refInfo->path, IMREAD_UNCHANGED | IMREAD_ANYDEPTH | IMREAD_ANYCOLOR);
+	// Step 3: Process all groups
+	for (auto& [prefix, data] : allGroups) {
+		cout << "Processing group: " << prefix << " (" << data.images.size() << " images)" << endl;
+
+		Mat refMat;
+		if (data.refInfo) {
+			cout << "  Reference found: " << data.refInfo->filename << endl;
+			Mat rawRef = imread(data.refInfo->path, IMREAD_UNCHANGED | IMREAD_ANYDEPTH | IMREAD_ANYCOLOR);
 			if (!rawRef.empty()) {
 				Mat processedRef = rawRef;
-				if (doRadio && groupCoeffs.valid) {
-					processedRef = applyRadiometricCalibration(rawRef, groupCoeffs);
+				if (doRadio && data.coeffs.valid) {
+					processedRef = applyRadiometricCalibration(rawRef, data.coeffs);
 				}
-				refMat = undistortImg(processedRef, *refInfo);
+				refMat = undistortImg(processedRef, *data.refInfo);
 			}
 		} else {
 			cout << "  No reference image found for group " << prefix << endl;
 		}
 
-		for (auto& info : group) {
+		for (auto& info : data.images) {
 			cout << "  --- " << endl;
 
 			Mat raw = imread(info.path, IMREAD_UNCHANGED | IMREAD_ANYDEPTH | IMREAD_ANYCOLOR);
 			if (raw.empty()) continue;
 
 			Mat processed = raw;
-			if (doRadio && groupCoeffs.valid) {
-				processed = applyRadiometricCalibration(raw, groupCoeffs);
+			if (doRadio && data.coeffs.valid) {
+				processed = applyRadiometricCalibration(raw, data.coeffs);
 			}
 
 			// --- STEP A: DEWARP ALIGNMENT (Metadata) ---
 			cout << "  Step A " << info.filename << endl;
 			Mat dewarped = undistortImg(processed, info);
 			Mat finalImg;
-
 
 			// --- STEP B: INITIAL ALIGNMENT (Metadata) ---
 			Mat H_meta = Mat::eye(3, 3, CV_64F);
@@ -497,10 +503,8 @@ int main(int argc, char** argv) {
 			// --- STEP C: OPTIONAL FINE TUNING (ECC) ---
 			Mat H_total = H_meta.clone();
 
-			cout << "  H_meta: " << H_meta << endl;
-
-			if (refInfo && refInfo->path != info.path && !refMat.empty()) {
-				cout << "  Step C: Aligning " << info.filename << " to " << refInfo->filename << " using ECC..." << endl;
+			if (data.refInfo && data.refInfo->path != info.path && !refMat.empty()) {
+				cout << "  Step C: Aligning " << info.filename << " to " << data.refInfo->filename << " using ECC..." << endl;
 
 				// 1. Apply metadata warp first to get close
 				Mat alignedMeta;
