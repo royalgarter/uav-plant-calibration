@@ -386,11 +386,12 @@ Mat applyRadiometricCalibration(const Mat& img, RadioCoeffs coeffs) {
 }
 
 
-int usage() {
-	cout << "USAGE: ./calib.exe <src_dir (default: .input/)> <dest_dir (default: .output/)> [--radio]" << endl;
+void showUsage() {
+	cout << "USAGE: ./calib <src_dir (default: .input/)> <dest_dir (default: .output/)> [--radio]" << endl;
 	cout << "  --radio       Enable radiometric calibration." << endl;
+	cout << "" << endl;
 	cout << "---" << endl;
-	return 1;
+	cout << "" << endl;
 }
 
 
@@ -408,7 +409,7 @@ int main(int argc, char** argv) {
 	Point radioInterval(40, 0);
 
 	if (argc == 1) {
-		usage();
+		showUsage();
 	}
 
 	vector<string> args;
