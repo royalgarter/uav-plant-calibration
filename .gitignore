@@ -35,3 +35,5 @@ output.png
 /example/calib/output/DJI_0015.TIF
 /example/calib/output/DJI_0080.JPG
 /example/calib/input
+/.input
+/.output

@@ -1,4 +1,7 @@
 #include <iostream>
+#include <fstream>
+#include <iomanip>
+#include <ctime>
 #include <filesystem>
 #include <regex>
 #include <sstream>
@@ -17,6 +20,33 @@
 using namespace std;
 using namespace std::filesystem;
 using namespace cv;
+
+// --- LOGGING UTILITY ---
+struct Logger {
+	ofstream file;
+	bool fileOpen = false;
+
+	void open(const string& filename) {
+		file.open(filename);
+		fileOpen = file.is_open();
+	}
+
+	template<typename T>
+	Logger& operator<<(const T& msg) {
+		cout << msg;
+		if (fileOpen) file << msg;
+		return *this;
+	}
+
+	// For endl/iomanip
+	Logger& operator<<(ostream& (*f)(ostream&)) {
+		f(cout);
+		if (fileOpen) f(file);
+		return *this;
+	}
+};
+
+Logger gLog;
 
 struct ImageInfo {
 	string path;
@@ -356,22 +386,30 @@ Mat applyRadiometricCalibration(const Mat& img, RadioCoeffs coeffs) {
 }
 
 
-bool usage() {
-	cout << "USAGE: ./calib <src_dir> <dest_dir> [--radio [x,y]]" << endl;
-	cout << "  --radio       Enable radiometric calibration. Optional interval (default 40,0)." << endl;
-	cout << "                Example: --radio 10,-40" << endl;
+int usage() {
+	cout << "USAGE: ./calib.exe <src_dir (default: .input/)> <dest_dir (default: .output/)> [--radio]" << endl;
+	cout << "  --radio       Enable radiometric calibration." << endl;
 	cout << "---" << endl;
-
 	return 1;
 }
 
 
 int main(int argc, char** argv) {
+	// Generate log filename
+	auto t = time(nullptr);
+	auto tm = *localtime(&t);
+	ostringstream oss;
+	oss << put_time(&tm, "%y%m%d-%H%M") << ".log";
+	gLog.open(oss.str());
 
-	string inDir = "input";
-	string outDir = "output";
+	string inDir = ".input";
+	string outDir = ".output";
 	bool doRadio = false;
 	Point radioInterval(40, 0);
+
+	if (argc == 1) {
+		usage();
+	}
 
 	vector<string> args;
 	for (int i = 1; i < argc; ++i) {
@@ -395,11 +433,23 @@ int main(int argc, char** argv) {
 	if (args.size() > 0) inDir = args[0];
 	if (args.size() > 1) outDir = args[1];
 
-	if (!exists(inDir)) return usage();
+	// Create directories if they don't exist
+	if (!exists(inDir)) {
+		create_directories(inDir);
+		gLog << "Created input directory: " << inDir << endl;
+	}
+	if (!exists(outDir)) {
+		create_directories(outDir);
+		gLog << "Created output directory: " << outDir << endl;
+	}
 
-	cout << "UAV Calibration running" << endl;
-	if (doRadio) cout << "Radiometric calibration ENABLED with interval (" << radioInterval.x << "," << radioInterval.y << ")" << endl;
-	create_directories(outDir);
+	gLog << "========================================" << endl;
+	gLog << "UAV Calibration running" << endl;
+	gLog << "Time: " << oss.str().substr(0, 11) << endl;
+	if (doRadio) gLog << "Radiometric calibration ENABLED with interval (" << radioInterval.x << "," << radioInterval.y << ")" << endl;
+	gLog << "Input: " << inDir << endl;
+	gLog << "Output: " << outDir << endl;
+	gLog << "========================================" << endl << endl;
 
 	// Step 1: Scan and Parse Metadata for all groups
 	struct GroupData {
@@ -410,7 +460,7 @@ int main(int argc, char** argv) {
 	};
 	map<string, GroupData> allGroups;
 
-	cout << "Scanning " << inDir << "..." << endl;
+	gLog << "Scanning " << inDir << "..." << endl;
 	for (const auto& entry : directory_iterator(inDir)) {
 		string path = entry.path().string();
 		string stem = entry.path().stem().string();
@@ -436,7 +486,7 @@ int main(int argc, char** argv) {
 
 	// Step 2: Collect Radiometric Calibration inputs for ALL groups upfront
 	if (doRadio) {
-		cout << "\n--- RADIOMETRIC CALIBRATION PHASE ---" << endl;
+		gLog << "\n--- RADIOMETRIC CALIBRATION PHASE ---" << endl;
 		for (auto& [prefix, data] : allGroups) {
 			ImageInfo* targetInfo = data.refInfo;
 			if (!targetInfo && !data.images.empty()) {
@@ -450,16 +500,18 @@ int main(int argc, char** argv) {
 				}
 			}
 		}
-		cout << "--- CALIBRATION PHASE COMPLETE ---\n" << endl;
+		gLog << "--- CALIBRATION PHASE COMPLETE ---\n" << endl;
 	}
 
 	// Step 3: Process all groups
 	for (auto& [prefix, data] : allGroups) {
-		cout << "Processing group: " << prefix << " (" << data.images.size() << " images)" << endl;
+		gLog << "****************************************" << endl;
+		gLog << "Processing group: " << prefix << " (" << data.images.size() << " images)" << endl;
+		gLog << "****************************************" << endl;
 
 		Mat refMat;
 		if (data.refInfo) {
-			cout << "  Reference found: " << data.refInfo->filename << endl;
+			gLog << "  Reference found: " << data.refInfo->filename << endl;
 			Mat rawRef = imread(data.refInfo->path, IMREAD_UNCHANGED | IMREAD_ANYDEPTH | IMREAD_ANYCOLOR);
 			if (!rawRef.empty()) {
 				Mat processedRef = rawRef;
@@ -469,14 +521,17 @@ int main(int argc, char** argv) {
 				refMat = undistortImg(processedRef, *data.refInfo);
 			}
 		} else {
-			cout << "  No reference image found for group " << prefix << endl;
+			gLog << "  No reference image found for group " << prefix << endl;
 		}
 
 		for (auto& info : data.images) {
-			cout << "  --- " << endl;
+			gLog << "\n  [Image: " << info.filename << "]" << endl;
 
 			Mat raw = imread(info.path, IMREAD_UNCHANGED | IMREAD_ANYDEPTH | IMREAD_ANYCOLOR);
-			if (raw.empty()) continue;
+			if (raw.empty()) {
+				gLog << "    Error: could not load " << info.path << endl;
+				continue;
+			}
 
 			Mat processed = raw;
 			if (doRadio && data.coeffs.valid) {
@@ -484,18 +539,18 @@ int main(int argc, char** argv) {
 			}
 
 			// --- STEP A: DEWARP ALIGNMENT (Metadata) ---
-			cout << "  Step A " << info.filename << endl;
+			gLog << "    Step A: Dewarping..." << endl;
 			Mat dewarped = undistortImg(processed, info);
 			Mat finalImg;
 
 			// --- STEP B: INITIAL ALIGNMENT (Metadata) ---
 			Mat H_meta = Mat::eye(3, 3, CV_64F);
 			if (info.foundH) {
-				cout << "  Step B: H_meta " << info.filename << endl;
+				gLog << "    Step B: Applying H_meta" << endl;
 				H_meta = info.H;
 			} else if (abs(info.relX) > 0.0001 || abs(info.relY) > 0.0001) {
 				// Translation
-				cout << "  Step B: relXY " << info.filename << endl;
+				gLog << "    Step B: Translation (" << info.relX << ", " << info.relY << ")" << endl;
 				H_meta.at<double>(0, 2) = info.relX;
 				H_meta.at<double>(1, 2) = info.relY;
 			}
@@ -504,7 +559,7 @@ int main(int argc, char** argv) {
 			Mat H_total = H_meta.clone();
 
 			if (data.refInfo && data.refInfo->path != info.path && !refMat.empty()) {
-				cout << "  Step C: Aligning " << info.filename << " to " << data.refInfo->filename << " using ECC..." << endl;
+				gLog << "    Step C: ECC Fine Alignment to " << data.refInfo->filename << "..." << endl;
 
 				// 1. Apply metadata warp first to get close
 				Mat alignedMeta;
@@ -540,9 +595,9 @@ int main(int argc, char** argv) {
 
 				try {
 					double cc = findTransformECC(refGray, alignedGray, H_ecc, motionType, criteria);
-					cout << "    ECC converged (cc=" << cc << ")" << endl;
+					gLog << "    ECC converged (cc=" << cc << ")" << endl;
 
-					cout << "  H_ecc: " << H_ecc << endl;
+					gLog << "    H_ecc: " << H_ecc << endl;
 
 					// 4. Compose transforms
 					// H_meta maps: Dst (Aligned) -> Src (Original)
@@ -567,16 +622,20 @@ int main(int argc, char** argv) {
 					H_total = H_meta * H_ecc_64F;
 
 				} catch (const cv::Exception& e) {
-					cerr << "    ECC failed: " << e.what() << endl;
+					gLog << "    ECC failed: " << e.what() << endl;
 				}
 			}
 
-			cout << "  H_total: " << H_total << endl;
-			cout << "  Saving " << info.filename << endl;
+			gLog << "    H_total: " << H_total << endl;
+			gLog << "    Saving " << info.filename << endl;
 
 			warpPerspective(dewarped, finalImg, H_total, dewarped.size(), INTER_LINEAR | WARP_INVERSE_MAP);
 			imwrite(outDir + "/" + info.filename, finalImg);
 		}
 	}
+
+	cout << "Press ENTER to exit..." << endl;
+	cin.get();
+
 	return 0;
 }
