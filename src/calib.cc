@@ -230,15 +230,21 @@ struct RadioCoeffs {
 };
 
 struct RadioState {
-	Point anchor;
-	bool clicked = false;
+	Point p56;
+	Point p3;
+	int clicks = 0;
 };
 
 void onMouseRadio(int event, int x, int y, int flags, void* userdata) {
 	if (event == EVENT_LBUTTONDOWN) {
 		RadioState* state = (RadioState*)userdata;
-		state->anchor = Point(x, y);
-		state->clicked = true;
+		if (state->clicks == 0) {
+			state->p56 = Point(x, y);
+			state->clicks = 1;
+		} else if (state->clicks == 1) {
+			state->p3 = Point(x, y);
+			state->clicks = 2;
+		}
 	}
 }
 
@@ -264,12 +270,18 @@ RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point i
 	setMouseCallback(winName, onMouseRadio, &state);
 
 	cout << "Radiometric Calibration for " << filename << ":" << endl;
-	cout << "  Click on the center of the 56% patch (usually the brightest/leftmost)." << endl;
-	cout << "  The next 3 patches (36%, 12%, 3%) will be sampled automatically with interval (" << interval.x << "," << interval.y << ")." << endl;
+	cout << "  1. Click on the center of the 56% patch (usually the brightest/leftmost)." << endl;
+	cout << "  2. Click on the center of the 3% patch (usually the darkest/rightmost)." << endl;
+	cout << "  Intermediate patches (36%, 12%) will be interpolated automatically." << endl;
 	cout << "  Press ESC to skip calibration for this group." << endl;
 
-	while (!state.clicked) {
-		imshow(winName, display);
+	int boxSize = 5;
+	while (state.clicks < 2) {
+		Mat temp = display.clone();
+		if (state.clicks >= 1) {
+			circle(temp, state.p56, boxSize, Scalar(0, 0, 255), -1);
+		}
+		imshow(winName, temp);
 		int key = waitKey(10);
 		if (key == 27) { // ESC
 			destroyWindow(winName);
@@ -281,11 +293,13 @@ RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point i
 	// Sampling
 	vector<double> dns;
 	vector<double> targets = {0.5647, 0.3582, 0.1148, 0.0272};
-	int boxSize = 10;
+
+	double stepX = (state.p3.x - state.p56.x) / 3.0;
+	double stepY = (state.p3.y - state.p56.y) / 3.0;
 
 	for (int i = 0; i < 4; ++i) {
-		int cx = state.anchor.x + i * interval.x;
-		int cy = state.anchor.y + i * interval.y;
+		int cx = cvRound(state.p56.x + i * stepX);
+		int cy = cvRound(state.p56.y + i * stepY);
 
 		Rect roi(cx - boxSize / 2, cy - boxSize / 2, boxSize, boxSize);
 		// boundary check
