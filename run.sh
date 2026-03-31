@@ -74,6 +74,9 @@ case "$1" in
     "clean")
         run_cmd node-gyp clean
         ;;
+    "release:zip")
+        run_cmd zip -r release_$(date +'%Y%m%d_%H%M').zip window_build/ calib-window.bat
+        ;;
     "release:win")
         run_cmd Compress-Archive -Path calib-window.bat, window_build/ -DestinationPath release_$(date +'%Y%m%d_%H%M').zip -Force -Verbose
         ;;
