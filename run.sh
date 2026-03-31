@@ -75,7 +75,7 @@ case "$1" in
         run_cmd node-gyp clean
         ;;
     "release:win")
-        run_cmd Compress-Archive -Path window_build/ -DestinationPath release_$(date +'%Y%m%d_%H%M').zip -Force
+        run_cmd Compress-Archive -Path calib-window.bat, window_build/ -DestinationPath release_$(date +'%Y%m%d_%H%M').zip -Force -Verbose
         ;;
     "example:js")
         run_cmd node index.js example/input/IMG-0.jpg out_js.jpg example/checkboard 9 6
