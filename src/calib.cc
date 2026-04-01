@@ -283,7 +283,7 @@ void onMouseRadio(int event, int x, int y, int flags, void* userdata) {
 	}
 }
 
-RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point interval, bool autoDetect = false) {
+RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point interval, int autoDetectThickness = -1) {
 	RadioState state;
 	Mat display;
 	RadioCoeffs coeffs;
@@ -300,7 +300,7 @@ RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point i
 
 	if (display.channels() == 1) cvtColor(display, display, COLOR_GRAY2BGR);
 
-	if (autoDetect) {
+	if (autoDetectThickness >= 0) {
 		string templatePath = "example/calib/radiometric_board.jpg";
 		Mat templ = imread(templatePath, IMREAD_COLOR);
 		if (!templ.empty()) {
@@ -353,23 +353,25 @@ RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point i
 				
 				// Calculate patch centers (56% and 3%)
 				// In the vertical template, 56% is top, 3% is bottom.
-				// We need to account for rotation.
+				// We need to account for rotation and border thickness.
 				Point p56_rel, p3_rel;
+				
+				double T = autoDetectThickness; // Use thickness directly as pixels
+				double IW = bestSize.width - 2 * T;
+				double IH = bestSize.height - 2 * T;
+
 				if (bestRot == 0) { // Vertical: 56% top, 3% bottom
-					p56_rel = Point(bestSize.width / 2, bestSize.height / 8);
-					p3_rel = Point(bestSize.width / 2, bestSize.height * 7 / 8);
-				} else if (bestRot == 1) { // 90 deg: 56% right, 3% left? No, let's be careful.
-					// Vertical Template (T) -> Rotate 90 CW -> Horizontal (H)
-					// T(w, h) -> H(h, w)
-					// Top of T (p56) becomes Right of H.
-					p56_rel = Point(bestSize.width * 7 / 8, bestSize.height / 2);
-					p3_rel = Point(bestSize.width / 8, bestSize.height / 2);
+					p56_rel = Point(bestSize.width / 2, T + IH / 8);
+					p3_rel = Point(bestSize.width / 2, T + IH * 7 / 8);
+				} else if (bestRot == 1) { // 90 deg: 56% right, 3% left
+					p56_rel = Point(T + IW * 7 / 8, bestSize.height / 2);
+					p3_rel = Point(T + IW / 8, bestSize.height / 2);
 				} else if (bestRot == 2) { // 180 deg: 56% bottom, 3% top
-					p56_rel = Point(bestSize.width / 2, bestSize.height * 7 / 8);
-					p3_rel = Point(bestSize.width / 2, bestSize.height / 8);
+					p56_rel = Point(bestSize.width / 2, T + IH * 7 / 8);
+					p3_rel = Point(bestSize.width / 2, T + IH / 8);
 				} else if (bestRot == 3) { // 270 deg: 56% left, 3% right
-					p56_rel = Point(bestSize.width / 8, bestSize.height / 2);
-					p3_rel = Point(bestSize.width * 7 / 8, bestSize.height / 2);
+					p56_rel = Point(T + IW / 8, bestSize.height / 2);
+					p3_rel = Point(T + IW * 7 / 8, bestSize.height / 2);
 				}
 
 				state.p56 = maxLoc_total + p56_rel;
@@ -588,7 +590,7 @@ Mat calculateNDVI(const Mat& red, const Mat& nir) {
 void showUsage() {
 	cout << "USAGE: ./calib <src_dir (default: .input/)> <dest_dir (default: .output/)> [--radio] [--auto]" << endl;
 	cout << "  --radio       Enable radiometric calibration." << endl;
-	cout << "  --auto        Auto-detect radiometric board (used with --radio)." << endl;
+	cout << "  --auto        Auto-detect radiometric board (used with --radio). Optional: --auto <border_thickness>" << endl;
 	cout << "" << endl;
 	cout << "---" << endl;
 	cout << "" << endl;
@@ -606,7 +608,7 @@ int main(int argc, char** argv) {
 	string inDir = ".input";
 	string outDir = ".output";
 	bool doRadio = false;
-	bool autoRadio = false;
+	int autoRadioThickness = -1;
 	Point radioInterval(40, 0);
 
 	if (argc == 1) {
@@ -628,7 +630,11 @@ int main(int argc, char** argv) {
 				}
 			}
 		} else if (arg == "--auto") {
-			autoRadio = true;
+			autoRadioThickness = 0;
+			if (i + 1 < argc && isdigit(argv[i+1][0])) {
+				autoRadioThickness = stoi(argv[i+1]);
+				i++;
+			}
 		} else {
 			args.push_back(arg);
 		}
@@ -662,7 +668,10 @@ int main(int argc, char** argv) {
 	gLog << "========================================" << endl;
 	gLog << "UAV Calibration running" << endl;
 	gLog << "Time: " << oss.str().substr(0, 11) << endl;
-	if (doRadio) gLog << "Radiometric calibration ENABLED with interval (" << radioInterval.x << "," << radioInterval.y << ")" << (autoRadio ? " [AUTO]" : "") << endl;
+	if (doRadio) {
+		gLog << "Radiometric calibration ENABLED with interval (" << radioInterval.x << "," << radioInterval.y << ")" << (autoRadioThickness >= 0 ? " [AUTO]" : "") << endl;
+		if (autoRadioThickness > 0) gLog << "  Auto-detect border thickness: " << autoRadioThickness << endl;
+	}
 	gLog << "Input: " << inDir << endl;
 	gLog << "Output: " << outDir << endl;
 	gLog << "========================================" << endl << endl;
@@ -712,7 +721,7 @@ int main(int argc, char** argv) {
 			if (targetInfo) {
 				Mat raw = imread(targetInfo->path, IMREAD_UNCHANGED | IMREAD_ANYDEPTH | IMREAD_ANYCOLOR);
 				if (!raw.empty()) {
-					data.coeffs = getRadiometricCoeffs(raw, targetInfo->filename, radioInterval, autoRadio);
+					data.coeffs = getRadiometricCoeffs(raw, targetInfo->filename, radioInterval, autoRadioThickness);
 				}
 			}
 		}
