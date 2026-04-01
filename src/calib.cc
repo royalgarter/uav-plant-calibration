@@ -432,20 +432,48 @@ RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point i
 	vector<double> targets_0rgb_green = {0.5554092039, 0.3851975973, 0.1255882691, 0.02554883719}; // Green channel of RGB image No.0
 	vector<double> targets_0rgb_blue = {0.5500704789, 0.390806116, 0.126676427, 0.02539390723}; // Blue channel of RGB image No.0
 
+	// Store filename in coeffs
+	coeffs.filename = filename;
+
 	// Select targets based on spectral band (last character of filename stem)
 	vector<double> targets = targets_5nir; // default to NIR
 	string stem = path(filename).stem().string();
 	if (!stem.empty()) {
 		char lastChar = stem.back();
-		if (lastChar == '5') targets = targets_5nir;
-		else if (lastChar == '4') targets = targets_4re;
-		else if (lastChar == '3') targets = targets_3red;
-		else if (lastChar == '2') targets = targets_2green;
-		else if (lastChar == '1') targets = targets_1blue;
+		if (lastChar == '5') {
+			targets = targets_5nir;
+			coeffs.bandName = "NIR";
+		}
+		else if (lastChar == '4') {
+			targets = targets_4re;
+			coeffs.bandName = "RedEdge";
+		}
+		else if (lastChar == '3') {
+			targets = targets_3red;
+			coeffs.bandName = "Red";
+		}
+		else if (lastChar == '2') {
+			targets = targets_2green;
+			coeffs.bandName = "Green";
+		}
+		else if (lastChar == '1') {
+			targets = targets_1blue;
+			coeffs.bandName = "Blue";
+		}
 		else if (lastChar == '0') {
 			// For RGB image (No.0), calibrate each channel separately
 			coeffs.isRGB = true;
+			coeffs.bandName = "RGB";
+			// Store per-channel targets
+			coeffs.targets_r = targets_0rgb_red;
+			coeffs.targets_g = targets_0rgb_green;
+			coeffs.targets_b = targets_0rgb_blue;
 		}
+	}
+
+	// Store single-band targets for multispectral images
+	if (!coeffs.isRGB) {
+		coeffs.targets = targets;
 	}
 
 	double stepX = (state.p3.x - state.p56.x) / 3.0;
@@ -481,6 +509,15 @@ RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point i
 				dns_b.push_back(0);
 			}
 		}
+	}
+
+	// Store DNS values in coeffs
+	if (coeffs.isRGB) {
+		coeffs.dns_r = dns_r;
+		coeffs.dns_g = dns_g;
+		coeffs.dns_b = dns_b;
+	} else {
+		coeffs.dns = dns_r;
 	}
 
 	imshow(winName, display);
@@ -559,6 +596,66 @@ Mat applyRadiometricCalibration(const Mat& img, RadioCoeffs coeffs) {
 	calibrated.convertTo(normalized, CV_8U, 255.0 / (maxR - minR), -minR * 255.0 / (maxR - minR));
 
 	return normalized;
+}
+
+// Export radiometric calibration data to CSV
+void exportRadiometricCsv(const string& outPath, const map<string, GroupData>& allGroups) {
+	string csvPath = outPath + "/radiometric_report.csv";
+	ofstream csv(csvPath);
+
+	if (!csv.is_open()) {
+		gLog << "  ERROR: Could not create CSV file: " << csvPath << endl;
+		return;
+	}
+
+	// Set precision for floating-point output
+	csv << fixed << setprecision(6);
+
+	// Write header
+	csv << "Filename,Band,Target 56%,Target 36%,Target 12%,Target 3%,DN 56%,DN 36%,DN 12%,DN 3%,Slope (a),Intercept (b)" << endl;
+
+	// Iterate through all groups
+	for (const auto& [prefix, data] : allGroups) {
+		if (!data.coeffs.valid) continue;
+
+		if (data.coeffs.isRGB) {
+			// Write rows for each RGB channel
+			// Red channel
+			csv << data.coeffs.filename << ",Red,"
+				<< data.coeffs.targets_r[0] << "," << data.coeffs.targets_r[1] << ","
+				<< data.coeffs.targets_r[2] << "," << data.coeffs.targets_r[3] << ","
+				<< data.coeffs.dns_r[0] << "," << data.coeffs.dns_r[1] << ","
+				<< data.coeffs.dns_r[2] << "," << data.coeffs.dns_r[3] << ","
+				<< data.coeffs.a_r << "," << data.coeffs.b_r << endl;
+
+			// Green channel
+			csv << data.coeffs.filename << ",Green,"
+				<< data.coeffs.targets_g[0] << "," << data.coeffs.targets_g[1] << ","
+				<< data.coeffs.targets_g[2] << "," << data.coeffs.targets_g[3] << ","
+				<< data.coeffs.dns_g[0] << "," << data.coeffs.dns_g[1] << ","
+				<< data.coeffs.dns_g[2] << "," << data.coeffs.dns_g[3] << ","
+				<< data.coeffs.a_g << "," << data.coeffs.b_g << endl;
+
+			// Blue channel
+			csv << data.coeffs.filename << ",Blue,"
+				<< data.coeffs.targets_b[0] << "," << data.coeffs.targets_b[1] << ","
+				<< data.coeffs.targets_b[2] << "," << data.coeffs.targets_b[3] << ","
+				<< data.coeffs.dns_b[0] << "," << data.coeffs.dns_b[1] << ","
+				<< data.coeffs.dns_b[2] << "," << data.coeffs.dns_b[3] << ","
+				<< data.coeffs.a_b << "," << data.coeffs.b_b << endl;
+		} else {
+			// Write row for single-band multispectral image
+			csv << data.coeffs.filename << "," << data.coeffs.bandName << ","
+				<< data.coeffs.targets[0] << "," << data.coeffs.targets[1] << ","
+				<< data.coeffs.targets[2] << "," << data.coeffs.targets[3] << ","
+				<< data.coeffs.dns[0] << "," << data.coeffs.dns[1] << ","
+				<< data.coeffs.dns[2] << "," << data.coeffs.dns[3] << ","
+				<< data.coeffs.a << "," << data.coeffs.b << endl;
+		}
+	}
+
+	csv.close();
+	gLog << "  Radiometric report exported to: " << csvPath << endl;
 }
 
 Mat contrastStretch(const Mat& src) {
@@ -735,6 +832,11 @@ int main(int argc, char** argv) {
 			}
 		}
 		gLog << "--- CALIBRATION PHASE COMPLETE ---\n" << endl;
+
+		// Export radiometric calibration data to CSV
+		gLog << "--- EXPORTING RADIOMETRIC CSV ---" << endl;
+		exportRadiometricCsv(outDir, allGroups);
+		gLog << "--- CSV EXPORT COMPLETE ---\n" << endl;
 	}
 
 	// Step 3: Process all groups
