@@ -283,7 +283,7 @@ void onMouseRadio(int event, int x, int y, int flags, void* userdata) {
 	}
 }
 
-RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point interval) {
+RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point interval, bool autoDetect = false) {
 	RadioState state;
 	Mat display;
 	RadioCoeffs coeffs;
@@ -300,15 +300,100 @@ RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point i
 
 	if (display.channels() == 1) cvtColor(display, display, COLOR_GRAY2BGR);
 
-	string winName = "Radiometric Calibration - " + filename;
-	namedWindow(winName, WINDOW_NORMAL);
-	setMouseCallback(winName, onMouseRadio, &state);
+	if (autoDetect) {
+		string templatePath = "example/calib/radiometric_board.jpg";
+		Mat templ = imread(templatePath, IMREAD_COLOR);
+		if (!templ.empty()) {
+			cout << "  Auto-detecting board using template..." << endl;
+			double maxVal_total = -1;
+			Point maxLoc_total;
+			int bestRot = 0;
+			double bestScale = 1.0;
+			Size bestSize;
 
-	cout << "Radiometric Calibration for " << filename << ":" << endl;
-	cout << "  1. Click on the center of the 56% patch (usually the brightest/leftmost)." << endl;
-	cout << "  2. Click on the center of the 3% patch (usually the darkest/rightmost)." << endl;
-	cout << "  Intermediate patches (36%, 12%) will be interpolated automatically." << endl;
-	cout << "  Press ESC to skip calibration for this group." << endl;
+			Mat grayDisplay;
+			cvtColor(display, grayDisplay, COLOR_BGR2GRAY);
+
+			// Try different scales and rotations
+			vector<double> scales = {0.5, 0.75, 1.0, 1.25, 1.5};
+			for (double scale : scales) {
+				Mat scaledTempl;
+				resize(templ, scaledTempl, Size(), scale, scale);
+				
+				for (int rot = 0; rot < 4; ++rot) {
+					Mat rotTempl;
+					if (rot == 0) rotTempl = scaledTempl;
+					else if (rot == 1) rotate(scaledTempl, rotTempl, ROTATE_90_CLOCKWISE);
+					else if (rot == 2) rotate(scaledTempl, rotTempl, ROTATE_180);
+					else if (rot == 3) rotate(scaledTempl, rotTempl, ROTATE_90_COUNTERCLOCKWISE);
+
+					if (rotTempl.cols > grayDisplay.cols || rotTempl.rows > grayDisplay.rows) continue;
+
+					Mat grayTempl;
+					cvtColor(rotTempl, grayTempl, COLOR_BGR2GRAY);
+
+					Mat result;
+					matchTemplate(grayDisplay, grayTempl, result, TM_CCOEFF_NORMED);
+					double minVal, maxVal;
+					Point minLoc, maxLoc;
+					minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc);
+
+					if (maxVal > maxVal_total) {
+						maxVal_total = maxVal;
+						maxLoc_total = maxLoc;
+						bestRot = rot;
+						bestScale = scale;
+						bestSize = rotTempl.size();
+					}
+				}
+			}
+
+			if (maxVal_total > 0.7) {
+				cout << "    Board detected! (score=" << maxVal_total << ", rot=" << bestRot*90 << "deg, scale=" << bestScale << ")" << endl;
+				
+				// Calculate patch centers (56% and 3%)
+				// In the vertical template, 56% is top, 3% is bottom.
+				// We need to account for rotation.
+				Point p56_rel, p3_rel;
+				if (bestRot == 0) { // Vertical: 56% top, 3% bottom
+					p56_rel = Point(bestSize.width / 2, bestSize.height / 8);
+					p3_rel = Point(bestSize.width / 2, bestSize.height * 7 / 8);
+				} else if (bestRot == 1) { // 90 deg: 56% right, 3% left? No, let's be careful.
+					// Vertical Template (T) -> Rotate 90 CW -> Horizontal (H)
+					// T(w, h) -> H(h, w)
+					// Top of T (p56) becomes Right of H.
+					p56_rel = Point(bestSize.width * 7 / 8, bestSize.height / 2);
+					p3_rel = Point(bestSize.width / 8, bestSize.height / 2);
+				} else if (bestRot == 2) { // 180 deg: 56% bottom, 3% top
+					p56_rel = Point(bestSize.width / 2, bestSize.height * 7 / 8);
+					p3_rel = Point(bestSize.width / 2, bestSize.height / 8);
+				} else if (bestRot == 3) { // 270 deg: 56% left, 3% right
+					p56_rel = Point(bestSize.width / 8, bestSize.height / 2);
+					p3_rel = Point(bestSize.width * 7 / 8, bestSize.height / 2);
+				}
+
+				state.p56 = maxLoc_total + p56_rel;
+				state.p3 = maxLoc_total + p3_rel;
+				state.clicks = 2;
+			} else {
+				cout << "    Board NOT detected (best score=" << maxVal_total << "). Falling back to manual." << endl;
+			}
+		} else {
+			cout << "    Warning: Could not load template " << templatePath << ". Falling back to manual." << endl;
+		}
+	}
+
+	string winName = "Radiometric Calibration - " + filename;
+	if (state.clicks < 2) {
+		namedWindow(winName, WINDOW_NORMAL);
+		setMouseCallback(winName, onMouseRadio, &state);
+
+		cout << "Radiometric Calibration for " << filename << ":" << endl;
+		cout << "  1. Click on the center of the 56% patch (usually the brightest/leftmost)." << endl;
+		cout << "  2. Click on the center of the 3% patch (usually the darkest/rightmost)." << endl;
+		cout << "  Intermediate patches (36%, 12%) will be interpolated automatically." << endl;
+		cout << "  Press ESC to skip calibration for this group." << endl;
+	}
 
 	int boxSize = 5;
 	while (state.clicks < 2) {
@@ -501,8 +586,9 @@ Mat calculateNDVI(const Mat& red, const Mat& nir) {
 
 
 void showUsage() {
-	cout << "USAGE: ./calib <src_dir (default: .input/)> <dest_dir (default: .output/)> [--radio]" << endl;
+	cout << "USAGE: ./calib <src_dir (default: .input/)> <dest_dir (default: .output/)> [--radio] [--auto]" << endl;
 	cout << "  --radio       Enable radiometric calibration." << endl;
+	cout << "  --auto        Auto-detect radiometric board (used with --radio)." << endl;
 	cout << "" << endl;
 	cout << "---" << endl;
 	cout << "" << endl;
@@ -520,6 +606,7 @@ int main(int argc, char** argv) {
 	string inDir = ".input";
 	string outDir = ".output";
 	bool doRadio = false;
+	bool autoRadio = false;
 	Point radioInterval(40, 0);
 
 	if (argc == 1) {
@@ -540,6 +627,8 @@ int main(int argc, char** argv) {
 					i++;
 				}
 			}
+		} else if (arg == "--auto") {
+			autoRadio = true;
 		} else {
 			args.push_back(arg);
 		}
@@ -573,7 +662,7 @@ int main(int argc, char** argv) {
 	gLog << "========================================" << endl;
 	gLog << "UAV Calibration running" << endl;
 	gLog << "Time: " << oss.str().substr(0, 11) << endl;
-	if (doRadio) gLog << "Radiometric calibration ENABLED with interval (" << radioInterval.x << "," << radioInterval.y << ")" << endl;
+	if (doRadio) gLog << "Radiometric calibration ENABLED with interval (" << radioInterval.x << "," << radioInterval.y << ")" << (autoRadio ? " [AUTO]" : "") << endl;
 	gLog << "Input: " << inDir << endl;
 	gLog << "Output: " << outDir << endl;
 	gLog << "========================================" << endl << endl;
@@ -623,7 +712,7 @@ int main(int argc, char** argv) {
 			if (targetInfo) {
 				Mat raw = imread(targetInfo->path, IMREAD_UNCHANGED | IMREAD_ANYDEPTH | IMREAD_ANYCOLOR);
 				if (!raw.empty()) {
-					data.coeffs = getRadiometricCoeffs(raw, targetInfo->filename, radioInterval);
+					data.coeffs = getRadiometricCoeffs(raw, targetInfo->filename, radioInterval, autoRadio);
 				}
 			}
 		}

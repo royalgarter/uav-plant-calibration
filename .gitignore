@@ -39,3 +39,4 @@ output.png
 /.output
 /example/calib/output/calib
 /example/calib/output/ndvi
+/example/calib/output/radio
