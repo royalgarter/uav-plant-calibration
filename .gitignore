@@ -37,3 +37,5 @@ output.png
 /example/calib/input
 /.input
 /.output
+/example/calib/output/calib
+/example/calib/output/ndvi

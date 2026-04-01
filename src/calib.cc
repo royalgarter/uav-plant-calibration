@@ -257,6 +257,11 @@ struct RadioCoeffs {
 	double a = 1.0;
 	double b = 0.0;
 	bool valid = false;
+	// For RGB images (band 0), store per-channel coefficients
+	double a_r = 1.0, b_r = 0.0;
+	double a_g = 1.0, b_g = 0.0;
+	double a_b = 1.0, b_b = 0.0;
+	bool isRGB = false;
 };
 
 struct RadioState {
@@ -320,12 +325,38 @@ RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point i
 		}
 	}
 
-	// Sampling
-	vector<double> dns;
-	vector<double> targets = {0.5647, 0.3582, 0.1148, 0.0272};
+	// Reference Reflectances from Calibration Target Surface Reflectance and Camera Response
+	// Identify band for multispectral camera image using last character of file name
+	vector<double> targets_5nir = {0.5647, 0.3582, 0.1148, 0.0272}; // NIR Near-infared image No.5
+	vector<double> targets_4re = {0.5618, 0.3666, 0.1191, 0.0267}; // RE Red edge image No.4
+	vector<double> targets_3red = {0.5599, 0.3740, 0.1228, 0.0262}; // Red image No.3
+	vector<double> targets_2green = {0.5567, 0.3835, 0.1256, 0.0256}; // Green image No.2
+	vector<double> targets_1blue = {0.5500704789, 0.390806116, 0.126676427, 0.02539390723}; // Blue image No.1
+	vector<double> targets_0rgb_red = {0.5581634717, 0.3790530195, 0.124637386, 0.02591108772}; // Red channel of RGB image No.0
+	vector<double> targets_0rgb_green = {0.5554092039, 0.3851975973, 0.1255882691, 0.02554883719}; // Green channel of RGB image No.0
+	vector<double> targets_0rgb_blue = {0.5500704789, 0.390806116, 0.126676427, 0.02539390723}; // Blue channel of RGB image No.0
+
+	// Select targets based on spectral band (last character of filename stem)
+	vector<double> targets = targets_5nir; // default to NIR
+	string stem = path(filename).stem().string();
+	if (!stem.empty()) {
+		char lastChar = stem.back();
+		if (lastChar == '5') targets = targets_5nir;
+		else if (lastChar == '4') targets = targets_4re;
+		else if (lastChar == '3') targets = targets_3red;
+		else if (lastChar == '2') targets = targets_2green;
+		else if (lastChar == '1') targets = targets_1blue;
+		else if (lastChar == '0') {
+			// For RGB image (No.0), calibrate each channel separately
+			coeffs.isRGB = true;
+		}
+	}
 
 	double stepX = (state.p3.x - state.p56.x) / 3.0;
 	double stepY = (state.p3.y - state.p56.y) / 3.0;
+
+	// Collect DN values for each channel
+	vector<double> dns_r, dns_g, dns_b;
 
 	for (int i = 0; i < 4; ++i) {
 		int cx = cvRound(state.p56.x + i * stepX);
@@ -337,10 +368,22 @@ RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point i
 
 		if (roi.area() > 0) {
 			Scalar avg = mean(img(roi));
-			dns.push_back(avg[0]);
+			if (coeffs.isRGB && img.channels() >= 3) {
+				// For RGB images, collect per-channel values (OpenCV uses BGR order)
+				dns_b.push_back(avg[0]);
+				dns_g.push_back(avg[1]);
+				dns_r.push_back(avg[2]);
+			} else {
+				// For multispectral single-band images
+				dns_r.push_back(avg[0]);
+			}
 			rectangle(display, roi, Scalar(0, 255, 0), 1);
 		} else {
-			dns.push_back(0);
+			dns_r.push_back(0);
+			if (coeffs.isRGB) {
+				dns_g.push_back(0);
+				dns_b.push_back(0);
+			}
 		}
 	}
 
@@ -348,23 +391,45 @@ RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point i
 	waitKey(500);
 	destroyWindow(winName);
 
-	// Regression: y = ax + b
-	// Y = [targets], X = [dns, 1]
-	Mat X(4, 2, CV_64F);
-	Mat Y(4, 1, CV_64F);
-	for (int i = 0; i < 4; ++i) {
-		X.at<double>(i, 0) = dns[i];
-		X.at<double>(i, 1) = 1.0;
-		Y.at<double>(i, 0) = targets[i];
+	// Helper lambda for regression
+	auto solveCoeffs = [](const vector<double>& dns, const vector<double>& tgts) -> pair<double, double> {
+		Mat X(4, 2, CV_64F);
+		Mat Y(4, 1, CV_64F);
+		for (int i = 0; i < 4; ++i) {
+			X.at<double>(i, 0) = dns[i];
+			X.at<double>(i, 1) = 1.0;
+			Y.at<double>(i, 0) = tgts[i];
+		}
+		Mat sol;
+		solve(X, Y, sol, DECOMP_SVD);
+		return {sol.at<double>(0, 0), sol.at<double>(1, 0)};
+	};
+
+	if (coeffs.isRGB && img.channels() >= 3) {
+		// Calculate coefficients for each RGB channel
+		auto [a_r, b_r] = solveCoeffs(dns_r, targets_0rgb_red);
+		auto [a_g, b_g] = solveCoeffs(dns_g, targets_0rgb_green);
+		auto [a_b, b_b] = solveCoeffs(dns_b, targets_0rgb_blue);
+
+		coeffs.a_r = a_r; coeffs.b_r = b_r;
+		coeffs.a_g = a_g; coeffs.b_g = b_g;
+		coeffs.a_b = a_b; coeffs.b_b = b_b;
+		coeffs.valid = true;
+
+		cout << "  RGB Coefficients calculated:" << endl;
+		cout << "    Red:   a=" << a_r << ", b=" << b_r << endl;
+		cout << "    Green: a=" << a_g << ", b=" << b_g << endl;
+		cout << "    Blue:  a=" << a_b << ", b=" << b_b << endl;
+	} else {
+		// Single channel calibration
+		auto [a, b] = solveCoeffs(dns_r, targets);
+		coeffs.a = a;
+		coeffs.b = b;
+		coeffs.valid = true;
+
+		cout << "  Coefficients calculated: a=" << coeffs.a << ", b=" << coeffs.b << endl;
 	}
 
-	Mat sol;
-	solve(X, Y, sol, DECOMP_SVD);
-	coeffs.a = sol.at<double>(0, 0);
-	coeffs.b = sol.at<double>(1, 0);
-	coeffs.valid = true;
-
-	cout << "  Coefficients calculated: a=" << coeffs.a << ", b=" << coeffs.b << endl;
 	return coeffs;
 }
 
@@ -372,17 +437,66 @@ Mat applyRadiometricCalibration(const Mat& img, RadioCoeffs coeffs) {
 	if (!coeffs.valid) return img.clone();
 
 	Mat calibrated;
-	img.convertTo(calibrated, CV_64F, coeffs.a, coeffs.b);
+
+	if (coeffs.isRGB && img.channels() >= 3) {
+		// For RGB images, apply per-channel calibration
+		vector<Mat> channels(3);
+		split(img, channels);
+
+		// OpenCV uses BGR order
+		channels[0].convertTo(channels[0], CV_64F, coeffs.a_b, coeffs.b_b); // Blue
+		channels[1].convertTo(channels[1], CV_64F, coeffs.a_g, coeffs.b_g); // Green
+		channels[2].convertTo(channels[2], CV_64F, coeffs.a_r, coeffs.b_r); // Red
+
+		merge(channels, calibrated);
+	} else {
+		// For multispectral single-band images
+		img.convertTo(calibrated, CV_64F, coeffs.a, coeffs.b);
+	}
 
 	// Normalizing to 0-255 based on min/max of the calibrated image (per Python logic)
 	double minR, maxR;
 	minMaxLoc(calibrated, &minR, &maxR);
 	if (maxR == minR) maxR = minR + 1.0;
-	
+
 	Mat normalized;
 	calibrated.convertTo(normalized, CV_8U, 255.0 / (maxR - minR), -minR * 255.0 / (maxR - minR));
 
 	return normalized;
+}
+
+Mat contrastStretch(const Mat& src) {
+	double minVal, maxVal;
+	minMaxLoc(src, &minVal, &maxVal);
+	
+	Mat dst;
+	if (maxVal > minVal) {
+		src.convertTo(dst, CV_8U, 255.0 / (maxVal - minVal), -minVal * 255.0 / (maxVal - minVal));
+	} else {
+		src.convertTo(dst, CV_8U);
+	}
+	return dst;
+}
+
+Mat calculateNDVI(const Mat& red, const Mat& nir) {
+	Mat r_float, n_float;
+	red.convertTo(r_float, CV_32F);
+	nir.convertTo(n_float, CV_32F);
+
+	Mat ndvi_top = n_float - r_float;
+	Mat ndvi_bottom = n_float + r_float;
+	
+	// Avoid division by zero
+	Mat mask = (ndvi_bottom == 0);
+	ndvi_bottom.setTo(0.00001f, mask);
+
+	Mat ndvi = ndvi_top / ndvi_bottom;
+	
+	// Clip to [0, 1] as per python script reference
+	threshold(ndvi, ndvi, 0, 0, THRESH_TOZERO);
+	threshold(ndvi, ndvi, 1, 1, THRESH_TRUNC);
+	
+	return ndvi;
 }
 
 
@@ -444,6 +558,18 @@ int main(int argc, char** argv) {
 		gLog << "Created output directory: " << outDir << endl;
 	}
 
+	// Create subdirectories for each processing step
+	string calibDir = outDir + "/calib";
+	string radioDir = outDir + "/radio";
+	string ndviDir = outDir + "/ndvi";
+
+	create_directories(calibDir);
+	create_directories(radioDir);
+	create_directories(ndviDir);
+
+	gLog << "Calibrated images: " << calibDir << endl;
+	gLog << "Radiometric images: " << radioDir << endl;
+	gLog << "NDVI images: " << ndviDir << endl;
 	gLog << "========================================" << endl;
 	gLog << "UAV Calibration running" << endl;
 	gLog << "Time: " << oss.str().substr(0, 11) << endl;
@@ -524,6 +650,8 @@ int main(int argc, char** argv) {
 		} else {
 			gLog << "  No reference image found for group " << prefix << endl;
 		}
+
+		map<int, Mat> alignedBands;
 
 		for (auto& info : data.images) {
 			gLog << "\n  [Image: " << info.filename << "]" << endl;
@@ -631,7 +759,40 @@ int main(int argc, char** argv) {
 			gLog << "    Saving " << info.filename << endl;
 
 			warpPerspective(dewarped, finalImg, H_total, dewarped.size(), INTER_LINEAR | WARP_INVERSE_MAP);
-			imwrite(outDir + "/" + info.filename, finalImg);
+			imwrite(calibDir + "/" + info.filename, finalImg);
+
+			// Save radiometric calibrated image if radio is enabled
+			if (doRadio && data.coeffs.valid) {
+				Mat radioImg = applyRadiometricCalibration(raw, data.coeffs);
+				radioImg = undistortImg(radioImg, info);
+				warpPerspective(radioImg, radioImg, H_total, radioImg.size(), INTER_LINEAR | WARP_INVERSE_MAP);
+				imwrite(radioDir + "/" + info.filename, radioImg);
+			}
+
+			// Identify band for NDVI (last char of stem, e.g. DJI_0223.TIF -> 3=Red, 5=NIR)
+			string stem = path(info.path).stem().string();
+			if (!stem.empty()) {
+				int band = stem.back() - '0';
+				if (band == 3 || band == 5) {
+					alignedBands[band] = finalImg.clone();
+				}
+			}
+		}
+
+		// Calculate and save NDVI
+		if (alignedBands.count(3) && alignedBands.count(5)) {
+			gLog << "\n    Step D: Calculating NDVI for group " << prefix << "..." << endl;
+			Mat ndvi = calculateNDVI(alignedBands[3], alignedBands[5]);
+
+			// Save raw float NDVI
+			imwrite(ndviDir + "/" + prefix + "NDVI_raw.tif", ndvi);
+
+			// Save colorized NDVI
+			Mat ndvi_u8 = contrastStretch(ndvi);
+			Mat ndvi_color;
+			applyColorMap(ndvi_u8, ndvi_color, COLORMAP_JET);
+			imwrite(ndviDir + "/" + prefix + "NDVI_color.jpg", ndvi_color);
+			gLog << "    NDVI saved to " << prefix + "NDVI_raw.tif and " << prefix + "NDVI_color.jpg" << endl;
 		}
 	}
 
