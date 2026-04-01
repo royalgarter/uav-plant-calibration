@@ -262,7 +262,16 @@ struct RadioCoeffs {
 	double a_g = 1.0, b_g = 0.0;
 	double a_b = 1.0, b_b = 0.0;
 	bool isRGB = false;
+
+	// Data for CSV export
+	string filename;
+	string bandName;
+	vector<double> targets; // For single-band images (e.g., NIR, Red, etc.)
+	vector<double> dns;     // For single-band images
+	vector<double> targets_r, targets_g, targets_b; // For RGB channels (Red, Green, Blue)
+	vector<double> dns_r, dns_g, dns_b;     // For RGB channels
 };
+
 
 struct RadioState {
 	Point p56;
