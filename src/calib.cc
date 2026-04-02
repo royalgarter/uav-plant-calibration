@@ -634,6 +634,18 @@ RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point i
 
 	imshow(winName, display);
 	waitKey(500);
+	
+	// Save the image with markers for later review when auto-detect was used
+	if (autoDetectThickness >= 0) {
+		string outputDir = ".output/radio";
+		if (!exists(outputDir)) {
+			create_directories(outputDir);
+		}
+		string savePath = outputDir + "/" + filename + "_board_preview.jpg";
+		imwrite(savePath, display);
+		gLog << "  Board preview saved to: " << savePath << endl;
+	}
+	
 	destroyWindow(winName);
 
 	// Helper lambda for regression
@@ -847,7 +859,14 @@ int main(int argc, char** argv) {
 	auto tm = *localtime(&t);
 	ostringstream oss;
 	oss << put_time(&tm, "%y%m%d-%H%M") << ".log";
-	gLog.open(oss.str());
+	
+	// Ensure .logs directory exists
+	string logDir = ".logs";
+	if (!exists(logDir)) {
+		create_directories(logDir);
+	}
+	
+	gLog.open(logDir + "/" + oss.str());
 
 	string inDir = ".input";
 	string outDir = ".output";
