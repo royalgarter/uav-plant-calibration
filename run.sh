@@ -43,7 +43,7 @@ case "$1" in
         run_cmd ./calib example/calib/input example/calib/output --radio 0,25
         ;;
     "example:calib-auto")
-        run_cmd ./calib example/calib/input example/calib/output --radio 0,25 --auto 10 --template example/calib/radiometric_board.jpg
+        run_cmd ./calib example/calib/input example/calib/output --radio --auto 10 --ref example/calib/radiometric_reference.csv --template example/calib/radiometric_board.jpg
         ;;
     "example:calib-win")
         run_cmd ./window_build/calib.exe ./example/calib/input/ ./example/calib/output/

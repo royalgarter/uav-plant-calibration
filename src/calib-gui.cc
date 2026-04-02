@@ -232,7 +232,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) 
 			// Radiometric Reference File
 			CreateWindowExW(0, L"STATIC", L"Radiometric Ref File:", WS_VISIBLE | WS_CHILD,
 							xPos, yPos, labelWidth, height, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
-			hRadioRefFileEdit = CreateWindowExW(0, L"EDIT", L"radiometric_reference.csv", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_AUTOHSCROLL,
+			hRadioRefFileEdit = CreateWindowExW(0, L"EDIT", L"example/calib/radiometric_reference.csv", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_AUTOHSCROLL,
 												xPos + labelWidth, yPos, editWidth, height, hwnd, (HMENU)IDC_RADIO_REF_FILE_EDIT, GetModuleHandle(nullptr), nullptr);
 			hBrowseRadioRefBtn = CreateWindowExW(0, L"BUTTON", L"Browse...", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
 												xPos + labelWidth + editWidth + 10, yPos - 2, btnWidth, 28, hwnd, (HMENU)IDC_BROWSE_RADIO_REF_BTN, GetModuleHandle(nullptr), nullptr);

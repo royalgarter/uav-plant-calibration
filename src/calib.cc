@@ -844,6 +844,7 @@ void showUsage() {
 	cout << "  --radio       Enable radiometric calibration." << endl;
 	cout << "  --auto        Auto-detect radiometric board (used with --radio). Optional: --auto <border_thickness>" << endl;
 	cout << "  --template    Path to radiometric board template image (default: example/calib/radiometric_board.jpg)" << endl;
+	cout << "  --ref         Path to radiometric reference CSV file (default: radiometric_reference.csv)" << endl;
 #ifdef WINGUI
 	cout << "  --gui         Launch Windows GUI interface." << endl;
 #endif
@@ -870,7 +871,7 @@ int main(int argc, char** argv) {
 
 	string inDir = ".input";
 	string outDir = ".output";
-	string radioRefFile = "radiometric_reference.csv";
+	string radioRefFile = "example/calib/radiometric_reference.csv";
 	string radioTemplatePath = "example/calib/radiometric_board.jpg";
 	bool doRadio = false;
 	int autoRadioThickness = -1;
@@ -949,6 +950,11 @@ int main(int argc, char** argv) {
 			} else if (arg == "--template") {
 				if (i + 1 < argc && argv[i+1][0] != '-') {
 					radioTemplatePath = argv[i+1];
+					i++;
+				}
+			} else if (arg == "--ref") {
+				if (i + 1 < argc && argv[i+1][0] != '-') {
+					radioRefFile = argv[i+1];
 					i++;
 				}
 			} else {
