@@ -6,6 +6,7 @@ MINGW="x86_64-w64-mingw32-gcc"
 CFLAGS="-Wall -Wextra -pedantic -std=c++17"
 # Link the C++ standard library at the end
 LIBS="-lstdc++"
+WINGUI="-DWINGUI -lcomctl32 -lgdi32 -lcomdlg32 -lole32 -lshell32"
 
 if [[ "$1" == *"win"* ]]; then
     echo "OS: window"
@@ -30,7 +31,10 @@ case "$1" in
         run_cmd $MINGW $CFLAGS src/calib.cc -o calib -ltiff -Ilibtiff -Ilibtiff/include -Llibtiff/lib $(pkg-config --cflags --libs opencv4) $LIBS
         ;;
     "build:calib-win")
-        run_cmd $CC $CFLAGS src/calib.cc -o window_build/calib -ltiff -Ilibtiff -Ilibtiff/include -Llibtiff/lib -Ic:/opencv -Ic:/opencv/include -Lc:/opencv/x64/mingw/lib/ -lopencv_core455 -lopencv_calib3d455 -lopencv_imgcodecs455 -lopencv_imgproc455 -lopencv_video455 -lopencv_highgui455 $LIBS
+        run_cmd $CC $CFLAGS src/calib.cc -o window_build/calib.exe -ltiff -Ilibtiff -Ilibtiff/include -Llibtiff/lib -Ic:/opencv -Ic:/opencv/include -Lc:/opencv/x64/mingw/lib/ -lopencv_core455 -lopencv_calib3d455 -lopencv_imgcodecs455 -lopencv_imgproc455 -lopencv_video455 -lopencv_highgui455 $LIBS
+        ;;
+    "build:calib-win-gui")
+        run_cmd $CC $CFLAGS src/calib.cc -o window_build/calib-gui.exe -ltiff -Ilibtiff -Ilibtiff/include -Llibtiff/lib -Ic:/opencv -Ic:/opencv/include -Lc:/opencv/x64/mingw/lib/ -lopencv_core455 -lopencv_calib3d455 -lopencv_imgcodecs455 -lopencv_imgproc455 -lopencv_video455 -lopencv_highgui455 $LIBS $WINGUI
         ;;
     "example:calib")
         run_cmd ./calib example/calib/input example/calib/output

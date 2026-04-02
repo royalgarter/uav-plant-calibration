@@ -160,10 +160,14 @@ if (doRadio) {
 ### For Windows (with GUI):
 
 ```bash
-g++ -std=c++17 -o calib.exe src/calib.cc -DWINGUI \
+g++ -std=c++17 -o calib.exe src/calib.cc \
+    -lopencv_core -lopencv_calib3d -lopencv_imgcodecs -lopencv_imgproc \
+    -lopencv_video -lopencv_highgui -ltiff
+
+g++ -std=c++17 -o calib-gui.exe src/calib.cc -DWINGUI \
     -lopencv_core -lopencv_calib3d -lopencv_imgcodecs -lopencv_imgproc \
     -lopencv_video -lopencv_highgui -ltiff \
-    -lcomctl32 -lgdi32 -lcomdlg32 -lole32
+    -lcomctl32 -lgdi32 -lcomdlg32 -lole32 -lshell32
 ```
 
 ### For Linux (without GUI):
@@ -195,9 +199,9 @@ target_include_directories(calib PRIVATE ${OpenCV_INCLUDE_DIRS} ${TIFF_INCLUDE_D
 # Windows GUI version
 if(WIN32)
     add_executable(calib-gui src/calib.cc)
-    target_compile_definitions(calib-gui PRIVATE WINGUI)
+    target_compile_definitions(calib-gui PRIVATE WINGUI UNICODE _UNICODE)
     target_link_libraries(calib-gui ${OpenCV_LIBS} ${TIFF_LIBRARIES}
-                          comctl32 gdi32 comdlg32 ole32)
+                          comctl32 gdi32 comdlg32 ole32 shell32)
     target_include_directories(calib-gui PRIVATE ${OpenCV_INCLUDE_DIRS} ${TIFF_INCLUDE_DIRS})
 endif()
 ```

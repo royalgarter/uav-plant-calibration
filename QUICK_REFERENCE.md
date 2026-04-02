@@ -11,7 +11,7 @@ build-calib-gui.bat
 g++ -std=c++17 -o calib-gui.exe src/calib.cc -DWINGUI ^
     -lopencv_core -lopencv_calib3d -lopencv_imgcodecs ^
     -lopencv_imgproc -lopencv_video -lopencv_highgui ^
-    -ltiff -lcomctl32 -lgdi32 -lcomdlg32 -lole32
+    -ltiff -lcomctl32 -lgdi32 -lcomdlg32 -lole32 -lshell32
 ```
 
 ### Linux (CLI only)

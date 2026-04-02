@@ -1,6 +1,10 @@
 #ifdef WINGUI
 
+#define UNICODE
+#define _UNICODE
+
 #include <windows.h>
+#include <shlobj.h>
 #include <commctrl.h>
 #include <string>
 #include <iostream>
@@ -12,7 +16,14 @@ using namespace std;
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")
 #pragma comment(lib, "Comctl32.lib")
-#pragma comment(lib, "Comdlg32.lib") // For file dialogs
+#pragma comment(lib, "Comdlg32.lib")
+#pragma comment(lib, "Shell32.lib")
+#pragma comment(lib, "Ole32.lib")
+
+// Define SS_GRAYTEXT if not available
+#ifndef SS_GRAYTEXT
+#define SS_GRAYTEXT 0x00000008L
+#endif
 
 // --- CONTROL IDs ---
 #define IDC_INPUT_FOLDER_EDIT     101
@@ -44,19 +55,37 @@ bool g_guiCancelled = false;
 // Forward declaration
 LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 
+// Helper to convert string to wstring
+wstring toWide(const string& s) {
+	if (s.empty()) return L"";
+	int size = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
+	wstring result(size - 1, 0);
+	MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, &result[0], size);
+	return result;
+}
+
+// Helper to convert wstring to string
+string fromWide(const wstring& s) {
+	if (s.empty()) return "";
+	int size = WideCharToMultiByte(CP_UTF8, 0, s.c_str(), -1, nullptr, 0, nullptr, nullptr);
+	string result(size - 1, 0);
+	WideCharToMultiByte(CP_UTF8, 0, s.c_str(), -1, &result[0], size, nullptr, nullptr);
+	return result;
+}
+
 // --- FILE DIALOG HELPERS ---
 string browseForFolder(HWND hwnd, const string& title) {
-	BROWSEINFO bi = {};
+	BROWSEINFOW bi = {};
 	bi.hwndOwner = hwnd;
-	bi.lpszTitle = title.c_str();
+	bi.lpszTitle = toWide(title).c_str();
 	bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
 
-	LPITEMIDLIST pidl = SHBrowseForFolder(&bi);
+	LPITEMIDLIST pidl = SHBrowseForFolderW(&bi);
 	if (pidl != nullptr) {
-		char path[MAX_PATH];
-		if (SHGetPathFromIDList(pidl, path)) {
+		wchar_t path[MAX_PATH];
+		if (SHGetPathFromIDListW(pidl, path)) {
 			CoTaskMemFree(pidl);
-			return string(path);
+			return fromWide(path);
 		}
 		CoTaskMemFree(pidl);
 	}
@@ -64,19 +93,19 @@ string browseForFolder(HWND hwnd, const string& title) {
 }
 
 string browseForFile(HWND hwnd, const string& title, const string& filter) {
-	OPENFILENAME ofn = {};
-	char szFile[MAX_PATH] = "";
+	OPENFILENAMEW ofn = {};
+	wchar_t szFile[MAX_PATH] = L"";
 
-	ofn.lStructSize = sizeof(OPENFILENAME);
+	ofn.lStructSize = sizeof(OPENFILENAMEW);
 	ofn.hwndOwner = hwnd;
 	ofn.lpstrFile = szFile;
 	ofn.nMaxFile = MAX_PATH;
-	ofn.lpstrFilter = filter.c_str();
-	ofn.lpstrTitle = title.c_str();
+	ofn.lpstrFilter = toWide(filter).c_str();
+	ofn.lpstrTitle = toWide(title).c_str();
 	ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
 
-	if (GetOpenFileName(&ofn)) {
-		return string(szFile);
+	if (GetOpenFileNameW(&ofn)) {
+		return fromWide(szFile);
 	}
 	return "";
 }
@@ -84,16 +113,19 @@ string browseForFile(HWND hwnd, const string& title, const string& filter) {
 // --- GUI ENTRY POINT ---
 bool runCalibGui(string& inputFolder, string& outputFolder, string& radioRefFile,
                  bool& enableRadio, bool& twoPointClickMode, bool& autoDetectBoard, int& boardThickness) {
+	// Initialize COM for file dialogs
+	CoInitialize(nullptr);
+
 	// Initialize common controls
 	INITCOMMONCONTROLSEX icex;
 	icex.dwSize = sizeof(INITCOMMONCONTROLSEX);
 	icex.dwICC = ICC_STANDARD_CLASSES;
 	InitCommonControlsEx(&icex);
 
-	const char CLASS_NAME[] = "UavCalibratorWindowClass";
+	const wchar_t CLASS_NAME[] = L"UavCalibratorWindowClass";
 
-	WNDCLASSEX wc = {};
-	wc.cbSize = sizeof(WNDCLASSEX);
+	WNDCLASSEXW wc = {};
+	wc.cbSize = sizeof(WNDCLASSEXW);
 	wc.lpfnWndProc = WndProc;
 	wc.hInstance = GetModuleHandle(nullptr);
 	wc.lpszClassName = CLASS_NAME;
@@ -101,15 +133,15 @@ bool runCalibGui(string& inputFolder, string& outputFolder, string& radioRefFile
 	wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
 	wc.hIcon = LoadIcon(nullptr, IDI_APPLICATION);
 
-	if (!RegisterClassEx(&wc)) {
-		MessageBox(nullptr, "Window Registration Failed!", "Error", MB_ICONEXCLAMATION | MB_OK);
+	if (!RegisterClassExW(&wc)) {
+		MessageBoxW(nullptr, L"Window Registration Failed!", L"Error", MB_ICONEXCLAMATION | MB_OK);
 		return false;
 	}
 
-	HWND hwnd = CreateWindowEx(
+	HWND hwnd = CreateWindowExW(
 		0,
 		CLASS_NAME,
-		"UAV Plant Calibration",
+		L"UAV Plant Calibration",
 		WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME & ~WS_MAXIMIZEBOX,
 		CW_USEDEFAULT, CW_USEDEFAULT,
 		720, 580,
@@ -120,7 +152,7 @@ bool runCalibGui(string& inputFolder, string& outputFolder, string& radioRefFile
 	);
 
 	if (hwnd == nullptr) {
-		MessageBox(nullptr, "Window Creation Failed!", "Error", MB_ICONEXCLAMATION | MB_OK);
+		MessageBoxW(nullptr, L"Window Creation Failed!", L"Error", MB_ICONEXCLAMATION | MB_OK);
 		return false;
 	}
 
@@ -146,6 +178,9 @@ bool runCalibGui(string& inputFolder, string& outputFolder, string& radioRefFile
 		boardThickness = g_boardThickness;
 	}
 
+	// Uninitialize COM
+	CoUninitialize();
+
 	return g_guiSubmitted;
 }
 
@@ -162,72 +197,72 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) 
 			int gap = 45;
 
 			// Title
-			CreateWindow("STATIC", "UAV Plant Calibration Parameters", WS_VISIBLE | WS_CHILD | SS_CENTER,
-						 xPos, yPos, 660, 30, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
+			CreateWindowExW(0, L"STATIC", L"UAV Plant Calibration Parameters", WS_VISIBLE | WS_CHILD | SS_CENTER,
+							xPos, yPos, 660, 30, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
 			yPos += 40;
 
 			// Input Folder
-			CreateWindow("STATIC", "Input Folder:", WS_VISIBLE | WS_CHILD,
-						 xPos, yPos, labelWidth, height, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
-			hInputFolderEdit = CreateWindow("EDIT", ".input", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_AUTOHSCROLL,
+			CreateWindowExW(0, L"STATIC", L"Input Folder:", WS_VISIBLE | WS_CHILD,
+							xPos, yPos, labelWidth, height, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
+			hInputFolderEdit = CreateWindowExW(0, L"EDIT", L".input", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_AUTOHSCROLL,
 											xPos + labelWidth, yPos, editWidth, height, hwnd, (HMENU)IDC_INPUT_FOLDER_EDIT, GetModuleHandle(nullptr), nullptr);
-			hBrowseInputBtn = CreateWindow("BUTTON", "Browse...", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
-										   xPos + labelWidth + editWidth + 10, yPos - 2, btnWidth, 28, hwnd, (HMENU)IDC_BROWSE_INPUT_BTN, GetModuleHandle(nullptr), nullptr);
+			hBrowseInputBtn = CreateWindowExW(0, L"BUTTON", L"Browse...", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
+											xPos + labelWidth + editWidth + 10, yPos - 2, btnWidth, 28, hwnd, (HMENU)IDC_BROWSE_INPUT_BTN, GetModuleHandle(nullptr), nullptr);
 			yPos += gap;
 
 			// Output Folder
-			CreateWindow("STATIC", "Output Folder:", WS_VISIBLE | WS_CHILD,
-						 xPos, yPos, labelWidth, height, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
-			hOutputFolderEdit = CreateWindow("EDIT", ".output", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_AUTOHSCROLL,
-											 xPos + labelWidth, yPos, editWidth, height, hwnd, (HMENU)IDC_OUTPUT_FOLDER_EDIT, GetModuleHandle(nullptr), nullptr);
-			hBrowseOutputBtn = CreateWindow("BUTTON", "Browse...", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
+			CreateWindowExW(0, L"STATIC", L"Output Folder:", WS_VISIBLE | WS_CHILD,
+							xPos, yPos, labelWidth, height, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
+			hOutputFolderEdit = CreateWindowExW(0, L"EDIT", L".output", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_AUTOHSCROLL,
+												xPos + labelWidth, yPos, editWidth, height, hwnd, (HMENU)IDC_OUTPUT_FOLDER_EDIT, GetModuleHandle(nullptr), nullptr);
+			hBrowseOutputBtn = CreateWindowExW(0, L"BUTTON", L"Browse...", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
 											xPos + labelWidth + editWidth + 10, yPos - 2, btnWidth, 28, hwnd, (HMENU)IDC_BROWSE_OUTPUT_BTN, GetModuleHandle(nullptr), nullptr);
 			yPos += gap;
 
 			// Radiometric Reference File
-			CreateWindow("STATIC", "Radiometric Ref File:", WS_VISIBLE | WS_CHILD,
-						 xPos, yPos, labelWidth, height, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
-			hRadioRefFileEdit = CreateWindow("EDIT", "radiometric_reference.csv", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_AUTOHSCROLL,
-											 xPos + labelWidth, yPos, editWidth, height, hwnd, (HMENU)IDC_RADIO_REF_FILE_EDIT, GetModuleHandle(nullptr), nullptr);
-			hBrowseRadioRefBtn = CreateWindow("BUTTON", "Browse...", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
-											  xPos + labelWidth + editWidth + 10, yPos - 2, btnWidth, 28, hwnd, (HMENU)IDC_BROWSE_RADIO_REF_BTN, GetModuleHandle(nullptr), nullptr);
+			CreateWindowExW(0, L"STATIC", L"Radiometric Ref File:", WS_VISIBLE | WS_CHILD,
+							xPos, yPos, labelWidth, height, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
+			hRadioRefFileEdit = CreateWindowExW(0, L"EDIT", L"radiometric_reference.csv", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_AUTOHSCROLL,
+												xPos + labelWidth, yPos, editWidth, height, hwnd, (HMENU)IDC_RADIO_REF_FILE_EDIT, GetModuleHandle(nullptr), nullptr);
+			hBrowseRadioRefBtn = CreateWindowExW(0, L"BUTTON", L"Browse...", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
+												xPos + labelWidth + editWidth + 10, yPos - 2, btnWidth, 28, hwnd, (HMENU)IDC_BROWSE_RADIO_REF_BTN, GetModuleHandle(nullptr), nullptr);
 			yPos += gap;
 
 			// Enable Radiometric Calibration Checkbox
-			hRadioCheck = CreateWindow("BUTTON", "Enable Radiometric Calibration (--radio)",
+			hRadioCheck = CreateWindowExW(0, L"BUTTON", L"Enable Radiometric Calibration (--radio)",
 									   WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX,
 									   xPos, yPos, 400, height, hwnd, (HMENU)IDC_RADIO_CHECK, GetModuleHandle(nullptr), nullptr);
 			yPos += gap - 10;
 
 			// 2-Point Click Mode Checkbox
-			hTwoPointClickCheck = CreateWindow("BUTTON", "2-Point Click Mode for Board Detection",
+			hTwoPointClickCheck = CreateWindowExW(0, L"BUTTON", L"2-Point Click Mode for Board Detection",
 											   WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX,
 											   xPos, yPos, 400, height, hwnd, (HMENU)IDC_TWO_POINT_CLICK_CHECK, GetModuleHandle(nullptr), nullptr);
 			yPos += gap - 10;
 
 			// Auto-Detect Board Checkbox
-			hAutoDetectCheck = CreateWindow("BUTTON", "Auto-Detect Radiometric Board (--auto)",
+			hAutoDetectCheck = CreateWindowExW(0, L"BUTTON", L"Auto-Detect Radiometric Board (--auto)",
 											WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX,
 											xPos, yPos, 400, height, hwnd, (HMENU)IDC_AUTO_DETECT_CHECK, GetModuleHandle(nullptr), nullptr);
 			yPos += gap - 10;
 
 			// Board Thickness
-			CreateWindow("STATIC", "Board Thickness (pixels):", WS_VISIBLE | WS_CHILD,
-						 xPos, yPos, labelWidth, height, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
-			hBoardThicknessEdit = CreateWindow("EDIT", "0", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_NUMBER | ES_AUTOHSCROLL,
-											   xPos + labelWidth, yPos, 100, height, hwnd, (HMENU)IDC_BOARD_THICKNESS_EDIT, GetModuleHandle(nullptr), nullptr);
-			CreateWindow("STATIC", "(0 = auto-detect thickness, -1 = disable auto-detect)", WS_VISIBLE | WS_CHILD | SS_GRAYTEXT,
-						 xPos + labelWidth + 110, yPos + 3, 300, height, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
+			CreateWindowExW(0, L"STATIC", L"Board Thickness (pixels):", WS_VISIBLE | WS_CHILD,
+							xPos, yPos, labelWidth, height, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
+			hBoardThicknessEdit = CreateWindowExW(0, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_NUMBER | ES_AUTOHSCROLL,
+												xPos + labelWidth, yPos, 100, height, hwnd, (HMENU)IDC_BOARD_THICKNESS_EDIT, GetModuleHandle(nullptr), nullptr);
+			CreateWindowExW(0, L"STATIC", L"(0 = auto-detect thickness, -1 = disable auto-detect)", WS_VISIBLE | WS_CHILD | SS_GRAYTEXT,
+							xPos + labelWidth + 110, yPos + 3, 300, height, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
 			yPos += gap + 10;
 
 			// Separator line
-			CreateWindow("STATIC", "", WS_VISIBLE | WS_CHILD | SS_ETCHEDHORZ,
-						 xPos, yPos, 660, 4, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
+			CreateWindowExW(0, L"STATIC", L"", WS_VISIBLE | WS_CHILD | SS_ETCHEDHORZ,
+							xPos, yPos, 660, 4, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
 			yPos += 30;
 
 			// Start Button
-			CreateWindow("BUTTON", "START CALIBRATION", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
-						 xPos, yPos, 660, 45, hwnd, (HMENU)IDC_START_BUTTON, GetModuleHandle(nullptr), nullptr);
+			CreateWindowExW(0, L"BUTTON", L"START CALIBRATION", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
+							xPos, yPos, 660, 45, hwnd, (HMENU)IDC_START_BUTTON, GetModuleHandle(nullptr), nullptr);
 
 			break;
 		}
@@ -237,7 +272,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) 
 				case IDC_BROWSE_INPUT_BTN: {
 					string folder = browseForFolder(hwnd, "Select Input Folder");
 					if (!folder.empty()) {
-						SetWindowText(hInputFolderEdit, folder.c_str());
+						SetWindowTextA(hInputFolderEdit, folder.c_str());
 					}
 					break;
 				}
@@ -245,7 +280,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) 
 				case IDC_BROWSE_OUTPUT_BTN: {
 					string folder = browseForFolder(hwnd, "Select Output Folder");
 					if (!folder.empty()) {
-						SetWindowText(hOutputFolderEdit, folder.c_str());
+						SetWindowTextA(hOutputFolderEdit, folder.c_str());
 					}
 					break;
 				}
@@ -254,25 +289,25 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) 
 					string file = browseForFile(hwnd, "Select Radiometric Reference CSV",
 					                            "CSV Files (*.csv)\0*.csv\0All Files (*.*)\0*.*\0");
 					if (!file.empty()) {
-						SetWindowText(hRadioRefFileEdit, file.c_str());
+						SetWindowTextA(hRadioRefFileEdit, file.c_str());
 					}
 					break;
 				}
 
 				case IDC_START_BUTTON: {
-					char buffer[MAX_PATH];
+					wchar_t buffer[MAX_PATH];
 
 					// Get input folder
-					GetWindowText(hInputFolderEdit, buffer, MAX_PATH);
-					g_inputFolder = buffer;
+					GetWindowTextW(hInputFolderEdit, buffer, MAX_PATH);
+					g_inputFolder = fromWide(buffer);
 
 					// Get output folder
-					GetWindowText(hOutputFolderEdit, buffer, MAX_PATH);
-					g_outputFolder = buffer;
+					GetWindowTextW(hOutputFolderEdit, buffer, MAX_PATH);
+					g_outputFolder = fromWide(buffer);
 
 					// Get radiometric reference file
-					GetWindowText(hRadioRefFileEdit, buffer, MAX_PATH);
-					g_radioRefFile = buffer;
+					GetWindowTextW(hRadioRefFileEdit, buffer, MAX_PATH);
+					g_radioRefFile = fromWide(buffer);
 
 					// Get checkbox states
 					g_enableRadio = (SendMessage(hRadioCheck, BM_GETCHECK, 0, 0) == BST_CHECKED);
@@ -280,28 +315,28 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) 
 					g_autoDetectBoard = (SendMessage(hAutoDetectCheck, BM_GETCHECK, 0, 0) == BST_CHECKED);
 
 					// Get board thickness
-					GetWindowText(hBoardThicknessEdit, buffer, 10);
+					GetWindowTextW(hBoardThicknessEdit, buffer, 10);
 					try {
-						g_boardThickness = stoi(buffer);
+						g_boardThickness = stoi(fromWide(buffer));
 					} catch (const exception& e) {
-						MessageBox(hwnd, "Invalid board thickness value. Please enter a valid integer.", "Error", MB_ICONERROR | MB_OK);
+						MessageBoxW(hwnd, L"Invalid board thickness value. Please enter a valid integer.", L"Error", MB_ICONERROR | MB_OK);
 						return 0;
 					}
 
 					// Validate inputs
 					if (g_inputFolder.empty()) {
-						MessageBox(hwnd, "Please specify an input folder.", "Validation Error", MB_ICONWARNING | MB_OK);
+						MessageBoxW(hwnd, L"Please specify an input folder.", L"Validation Error", MB_ICONWARNING | MB_OK);
 						return 0;
 					}
 
 					if (g_outputFolder.empty()) {
-						MessageBox(hwnd, "Please specify an output folder.", "Validation Error", MB_ICONWARNING | MB_OK);
+						MessageBoxW(hwnd, L"Please specify an output folder.", L"Validation Error", MB_ICONWARNING | MB_OK);
 						return 0;
 					}
 
 					if (g_enableRadio && g_radioRefFile.empty()) {
-						int result = MessageBox(hwnd, "Radiometric reference file is not specified. Continue without radiometric calibration?",
-						                        "Warning", MB_YESNO | MB_ICONWARNING);
+						int result = MessageBoxW(hwnd, L"Radiometric reference file is not specified. Continue without radiometric calibration?",
+						                        L"Warning", MB_YESNO | MB_ICONWARNING);
 						if (result == IDNO) {
 							return 0;
 						}

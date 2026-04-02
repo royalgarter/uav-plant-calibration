@@ -32,7 +32,7 @@ target_include_directories(calib PRIVATE
 if(WIN32)
     # GUI version with Windows support
     add_executable(calib-gui ${CALIB_SOURCES})
-    target_compile_definitions(calib-gui PRIVATE WINGUI)
+    target_compile_definitions(calib-gui PRIVATE WINGUI UNICODE _UNICODE)
     target_link_libraries(calib-gui 
         ${OpenCV_LIBS} 
         ${TIFF_LIBRARIES}
@@ -40,6 +40,7 @@ if(WIN32)
         gdi32 
         comdlg32 
         ole32
+        shell32
     )
     target_include_directories(calib-gui PRIVATE 
         ${OpenCV_INCLUDE_DIRS} 
