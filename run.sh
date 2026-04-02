@@ -48,6 +48,9 @@ case "$1" in
     "example:calib-win")
         run_cmd ./window_build/calib.exe ./example/calib/input/ ./example/calib/output/
         ;;
+    "example:calib-win-gui")
+        run_cmd ./window_build/calib-gui.exe --gui
+        ;;
     "example:calib-win-radio")
         run_cmd ./window_build/calib.exe ./example/calib/input/ ./example/calib/output/ --radio 0,25
         ;;
