@@ -262,7 +262,16 @@ struct RadioCoeffs {
 	double a_g = 1.0, b_g = 0.0;
 	double a_b = 1.0, b_b = 0.0;
 	bool isRGB = false;
+
+	// Data for CSV export
+	string filename;
+	string bandName;
+	vector<double> targets; // For single-band images (e.g., NIR, Red, etc.)
+	vector<double> dns;     // For single-band images
+	vector<double> targets_r, targets_g, targets_b; // For RGB channels (Red, Green, Blue)
+	vector<double> dns_r, dns_g, dns_b;     // For RGB channels
 };
+
 
 struct RadioState {
 	Point p56;
@@ -283,7 +292,7 @@ void onMouseRadio(int event, int x, int y, int flags, void* userdata) {
 	}
 }
 
-RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point interval) {
+RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point interval, int autoDetectThickness = -1) {
 	RadioState state;
 	Mat display;
 	RadioCoeffs coeffs;
@@ -300,15 +309,102 @@ RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point i
 
 	if (display.channels() == 1) cvtColor(display, display, COLOR_GRAY2BGR);
 
-	string winName = "Radiometric Calibration - " + filename;
-	namedWindow(winName, WINDOW_NORMAL);
-	setMouseCallback(winName, onMouseRadio, &state);
+	if (autoDetectThickness >= 0) {
+		string templatePath = "example/calib/radiometric_board.jpg";
+		Mat templ = imread(templatePath, IMREAD_COLOR);
+		if (!templ.empty()) {
+			cout << "  Auto-detecting board using template..." << endl;
+			double maxVal_total = -1;
+			Point maxLoc_total;
+			int bestRot = 0;
+			double bestScale = 1.0;
+			Size bestSize;
 
-	cout << "Radiometric Calibration for " << filename << ":" << endl;
-	cout << "  1. Click on the center of the 56% patch (usually the brightest/leftmost)." << endl;
-	cout << "  2. Click on the center of the 3% patch (usually the darkest/rightmost)." << endl;
-	cout << "  Intermediate patches (36%, 12%) will be interpolated automatically." << endl;
-	cout << "  Press ESC to skip calibration for this group." << endl;
+			Mat grayDisplay;
+			cvtColor(display, grayDisplay, COLOR_BGR2GRAY);
+
+			// Try different scales and rotations
+			vector<double> scales = {0.5, 0.75, 1.0, 1.25, 1.5};
+			for (double scale : scales) {
+				Mat scaledTempl;
+				resize(templ, scaledTempl, Size(), scale, scale);
+				
+				for (int rot = 0; rot < 4; ++rot) {
+					Mat rotTempl;
+					if (rot == 0) rotTempl = scaledTempl;
+					else if (rot == 1) rotate(scaledTempl, rotTempl, ROTATE_90_CLOCKWISE);
+					else if (rot == 2) rotate(scaledTempl, rotTempl, ROTATE_180);
+					else if (rot == 3) rotate(scaledTempl, rotTempl, ROTATE_90_COUNTERCLOCKWISE);
+
+					if (rotTempl.cols > grayDisplay.cols || rotTempl.rows > grayDisplay.rows) continue;
+
+					Mat grayTempl;
+					cvtColor(rotTempl, grayTempl, COLOR_BGR2GRAY);
+
+					Mat result;
+					matchTemplate(grayDisplay, grayTempl, result, TM_CCOEFF_NORMED);
+					double minVal, maxVal;
+					Point minLoc, maxLoc;
+					minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc);
+
+					if (maxVal > maxVal_total) {
+						maxVal_total = maxVal;
+						maxLoc_total = maxLoc;
+						bestRot = rot;
+						bestScale = scale;
+						bestSize = rotTempl.size();
+					}
+				}
+			}
+
+			if (maxVal_total > 0.7) {
+				cout << "    Board detected! (score=" << maxVal_total << ", rot=" << bestRot*90 << "deg, scale=" << bestScale << ")" << endl;
+				
+				// Calculate patch centers (56% and 3%)
+				// In the vertical template, 56% is top, 3% is bottom.
+				// We need to account for rotation and border thickness.
+				Point p56_rel, p3_rel;
+				
+				double T = autoDetectThickness; // Use thickness directly as pixels
+				double IW = bestSize.width - 2 * T;
+				double IH = bestSize.height - 2 * T;
+
+				if (bestRot == 0) { // Vertical: 56% top, 3% bottom
+					p56_rel = Point(bestSize.width / 2, T + IH / 8);
+					p3_rel = Point(bestSize.width / 2, T + IH * 7 / 8);
+				} else if (bestRot == 1) { // 90 deg: 56% right, 3% left
+					p56_rel = Point(T + IW * 7 / 8, bestSize.height / 2);
+					p3_rel = Point(T + IW / 8, bestSize.height / 2);
+				} else if (bestRot == 2) { // 180 deg: 56% bottom, 3% top
+					p56_rel = Point(bestSize.width / 2, T + IH * 7 / 8);
+					p3_rel = Point(bestSize.width / 2, T + IH / 8);
+				} else if (bestRot == 3) { // 270 deg: 56% left, 3% right
+					p56_rel = Point(T + IW / 8, bestSize.height / 2);
+					p3_rel = Point(T + IW * 7 / 8, bestSize.height / 2);
+				}
+
+				state.p56 = maxLoc_total + p56_rel;
+				state.p3 = maxLoc_total + p3_rel;
+				state.clicks = 2;
+			} else {
+				cout << "    Board NOT detected (best score=" << maxVal_total << "). Falling back to manual." << endl;
+			}
+		} else {
+			cout << "    Warning: Could not load template " << templatePath << ". Falling back to manual." << endl;
+		}
+	}
+
+	string winName = "Radiometric Calibration - " + filename;
+	if (state.clicks < 2) {
+		namedWindow(winName, WINDOW_NORMAL);
+		setMouseCallback(winName, onMouseRadio, &state);
+
+		cout << "Radiometric Calibration for " << filename << ":" << endl;
+		cout << "  1. Click on the center of the 56% patch (usually the brightest/leftmost)." << endl;
+		cout << "  2. Click on the center of the 3% patch (usually the darkest/rightmost)." << endl;
+		cout << "  Intermediate patches (36%, 12%) will be interpolated automatically." << endl;
+		cout << "  Press ESC to skip calibration for this group." << endl;
+	}
 
 	int boxSize = 5;
 	while (state.clicks < 2) {
@@ -336,20 +432,48 @@ RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point i
 	vector<double> targets_0rgb_green = {0.5554092039, 0.3851975973, 0.1255882691, 0.02554883719}; // Green channel of RGB image No.0
 	vector<double> targets_0rgb_blue = {0.5500704789, 0.390806116, 0.126676427, 0.02539390723}; // Blue channel of RGB image No.0
 
+	// Store filename in coeffs
+	coeffs.filename = filename;
+
 	// Select targets based on spectral band (last character of filename stem)
 	vector<double> targets = targets_5nir; // default to NIR
 	string stem = path(filename).stem().string();
 	if (!stem.empty()) {
 		char lastChar = stem.back();
-		if (lastChar == '5') targets = targets_5nir;
-		else if (lastChar == '4') targets = targets_4re;
-		else if (lastChar == '3') targets = targets_3red;
-		else if (lastChar == '2') targets = targets_2green;
-		else if (lastChar == '1') targets = targets_1blue;
+		if (lastChar == '5') {
+			targets = targets_5nir;
+			coeffs.bandName = "NIR";
+		}
+		else if (lastChar == '4') {
+			targets = targets_4re;
+			coeffs.bandName = "RedEdge";
+		}
+		else if (lastChar == '3') {
+			targets = targets_3red;
+			coeffs.bandName = "Red";
+		}
+		else if (lastChar == '2') {
+			targets = targets_2green;
+			coeffs.bandName = "Green";
+		}
+		else if (lastChar == '1') {
+			targets = targets_1blue;
+			coeffs.bandName = "Blue";
+		}
 		else if (lastChar == '0') {
 			// For RGB image (No.0), calibrate each channel separately
 			coeffs.isRGB = true;
+			coeffs.bandName = "RGB";
+			// Store per-channel targets
+			coeffs.targets_r = targets_0rgb_red;
+			coeffs.targets_g = targets_0rgb_green;
+			coeffs.targets_b = targets_0rgb_blue;
 		}
+	}
+
+	// Store single-band targets for multispectral images
+	if (!coeffs.isRGB) {
+		coeffs.targets = targets;
 	}
 
 	double stepX = (state.p3.x - state.p56.x) / 3.0;
@@ -385,6 +509,15 @@ RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point i
 				dns_b.push_back(0);
 			}
 		}
+	}
+
+	// Store DNS values in coeffs
+	if (coeffs.isRGB) {
+		coeffs.dns_r = dns_r;
+		coeffs.dns_g = dns_g;
+		coeffs.dns_b = dns_b;
+	} else {
+		coeffs.dns = dns_r;
 	}
 
 	imshow(winName, display);
@@ -465,6 +598,66 @@ Mat applyRadiometricCalibration(const Mat& img, RadioCoeffs coeffs) {
 	return normalized;
 }
 
+// Export radiometric calibration data to CSV
+void exportRadiometricCsv(const string& outPath, const map<string, GroupData>& allGroups) {
+	string csvPath = outPath + "/radiometric_report.csv";
+	ofstream csv(csvPath);
+
+	if (!csv.is_open()) {
+		gLog << "  ERROR: Could not create CSV file: " << csvPath << endl;
+		return;
+	}
+
+	// Set precision for floating-point output
+	csv << fixed << setprecision(6);
+
+	// Write header
+	csv << "Filename,Band,Target 56%,Target 36%,Target 12%,Target 3%,DN 56%,DN 36%,DN 12%,DN 3%,Slope (a),Intercept (b)" << endl;
+
+	// Iterate through all groups
+	for (const auto& [prefix, data] : allGroups) {
+		if (!data.coeffs.valid) continue;
+
+		if (data.coeffs.isRGB) {
+			// Write rows for each RGB channel
+			// Red channel
+			csv << data.coeffs.filename << ",Red,"
+				<< data.coeffs.targets_r[0] << "," << data.coeffs.targets_r[1] << ","
+				<< data.coeffs.targets_r[2] << "," << data.coeffs.targets_r[3] << ","
+				<< data.coeffs.dns_r[0] << "," << data.coeffs.dns_r[1] << ","
+				<< data.coeffs.dns_r[2] << "," << data.coeffs.dns_r[3] << ","
+				<< data.coeffs.a_r << "," << data.coeffs.b_r << endl;
+
+			// Green channel
+			csv << data.coeffs.filename << ",Green,"
+				<< data.coeffs.targets_g[0] << "," << data.coeffs.targets_g[1] << ","
+				<< data.coeffs.targets_g[2] << "," << data.coeffs.targets_g[3] << ","
+				<< data.coeffs.dns_g[0] << "," << data.coeffs.dns_g[1] << ","
+				<< data.coeffs.dns_g[2] << "," << data.coeffs.dns_g[3] << ","
+				<< data.coeffs.a_g << "," << data.coeffs.b_g << endl;
+
+			// Blue channel
+			csv << data.coeffs.filename << ",Blue,"
+				<< data.coeffs.targets_b[0] << "," << data.coeffs.targets_b[1] << ","
+				<< data.coeffs.targets_b[2] << "," << data.coeffs.targets_b[3] << ","
+				<< data.coeffs.dns_b[0] << "," << data.coeffs.dns_b[1] << ","
+				<< data.coeffs.dns_b[2] << "," << data.coeffs.dns_b[3] << ","
+				<< data.coeffs.a_b << "," << data.coeffs.b_b << endl;
+		} else {
+			// Write row for single-band multispectral image
+			csv << data.coeffs.filename << "," << data.coeffs.bandName << ","
+				<< data.coeffs.targets[0] << "," << data.coeffs.targets[1] << ","
+				<< data.coeffs.targets[2] << "," << data.coeffs.targets[3] << ","
+				<< data.coeffs.dns[0] << "," << data.coeffs.dns[1] << ","
+				<< data.coeffs.dns[2] << "," << data.coeffs.dns[3] << ","
+				<< data.coeffs.a << "," << data.coeffs.b << endl;
+		}
+	}
+
+	csv.close();
+	gLog << "  Radiometric report exported to: " << csvPath << endl;
+}
+
 Mat contrastStretch(const Mat& src) {
 	double minVal, maxVal;
 	minMaxLoc(src, &minVal, &maxVal);
@@ -501,8 +694,9 @@ Mat calculateNDVI(const Mat& red, const Mat& nir) {
 
 
 void showUsage() {
-	cout << "USAGE: ./calib <src_dir (default: .input/)> <dest_dir (default: .output/)> [--radio]" << endl;
+	cout << "USAGE: ./calib <src_dir (default: .input/)> <dest_dir (default: .output/)> [--radio] [--auto]" << endl;
 	cout << "  --radio       Enable radiometric calibration." << endl;
+	cout << "  --auto        Auto-detect radiometric board (used with --radio). Optional: --auto <border_thickness>" << endl;
 	cout << "" << endl;
 	cout << "---" << endl;
 	cout << "" << endl;
@@ -520,6 +714,7 @@ int main(int argc, char** argv) {
 	string inDir = ".input";
 	string outDir = ".output";
 	bool doRadio = false;
+	int autoRadioThickness = -1;
 	Point radioInterval(40, 0);
 
 	if (argc == 1) {
@@ -539,6 +734,12 @@ int main(int argc, char** argv) {
 					radioInterval.y = stoi(nextArg.substr(comma + 1));
 					i++;
 				}
+			}
+		} else if (arg == "--auto") {
+			autoRadioThickness = 0;
+			if (i + 1 < argc && isdigit(argv[i+1][0])) {
+				autoRadioThickness = stoi(argv[i+1]);
+				i++;
 			}
 		} else {
 			args.push_back(arg);
@@ -573,7 +774,10 @@ int main(int argc, char** argv) {
 	gLog << "========================================" << endl;
 	gLog << "UAV Calibration running" << endl;
 	gLog << "Time: " << oss.str().substr(0, 11) << endl;
-	if (doRadio) gLog << "Radiometric calibration ENABLED with interval (" << radioInterval.x << "," << radioInterval.y << ")" << endl;
+	if (doRadio) {
+		gLog << "Radiometric calibration ENABLED with interval (" << radioInterval.x << "," << radioInterval.y << ")" << (autoRadioThickness >= 0 ? " [AUTO]" : "") << endl;
+		if (autoRadioThickness > 0) gLog << "  Auto-detect border thickness: " << autoRadioThickness << endl;
+	}
 	gLog << "Input: " << inDir << endl;
 	gLog << "Output: " << outDir << endl;
 	gLog << "========================================" << endl << endl;
@@ -623,11 +827,16 @@ int main(int argc, char** argv) {
 			if (targetInfo) {
 				Mat raw = imread(targetInfo->path, IMREAD_UNCHANGED | IMREAD_ANYDEPTH | IMREAD_ANYCOLOR);
 				if (!raw.empty()) {
-					data.coeffs = getRadiometricCoeffs(raw, targetInfo->filename, radioInterval);
+					data.coeffs = getRadiometricCoeffs(raw, targetInfo->filename, radioInterval, autoRadioThickness);
 				}
 			}
 		}
 		gLog << "--- CALIBRATION PHASE COMPLETE ---\n" << endl;
+
+		// Export radiometric calibration data to CSV
+		gLog << "--- EXPORTING RADIOMETRIC CSV ---" << endl;
+		exportRadiometricCsv(outDir, allGroups);
+		gLog << "--- CSV EXPORT COMPLETE ---\n" << endl;
 	}
 
 	// Step 3: Process all groups
