@@ -888,8 +888,9 @@ int main(int argc, char** argv) {
 		
 		bool guiTwoPointClick = false, guiAutoDetect = false;
 		int guiBoardThickness = 0;
-		
-		if (!runCalibGui(inDir, outDir, radioRefFile, doRadio, guiTwoPointClick, guiAutoDetect, guiBoardThickness)) {
+		string guiTemplatePath = "example/calib/radiometric_board.jpg";
+
+		if (!runCalibGui(inDir, outDir, radioRefFile, doRadio, guiTwoPointClick, guiAutoDetect, guiBoardThickness, guiTemplatePath)) {
 			cout << "GUI cancelled or exited." << endl;
 			return 0;
 		}
@@ -901,11 +902,13 @@ int main(int argc, char** argv) {
 		if (guiTwoPointClick) {
 			autoRadioThickness = -1; // Disable auto-detect, use manual 2-point click
 		}
+		radioTemplatePath = guiTemplatePath;
 		
 		cout << "GUI Configuration:" << endl;
 		cout << "  Input Folder: " << inDir << endl;
 		cout << "  Output Folder: " << outDir << endl;
 		cout << "  Radiometric Ref: " << radioRefFile << endl;
+		cout << "  Radiometric Template: " << radioTemplatePath << endl;
 		cout << "  Radiometric Calibration: " << (doRadio ? "ENABLED" : "disabled") << endl;
 		cout << "  Auto-Detect Board: " << (guiAutoDetect ? "ENABLED" : "disabled") << endl;
 		if (guiAutoDetect) {

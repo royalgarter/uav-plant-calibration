@@ -73,10 +73,10 @@ case "$1" in
         run_cmd ./window_build/fisheye.exe example/fisheye/input example/fisheye/output example/fisheye/checkboard/calibration.txt
         ;;
     "release:zip")
-        run_cmd zip -r release_$(date +'%Y%m%d_%H%M').zip window_build/ calib-window.bat
+        run_cmd zip -r release_$(date +'%Y%m%d_%H%M').zip calib-window.bat calib-window-gui.bat window_build/ 
         ;;
     "release:win")
-        run_cmd Compress-Archive -Path calib-window.bat, window_build/ -DestinationPath release_$(date +'%Y%m%d_%H%M').zip -Force -Verbose
+        run_cmd Compress-Archive -Path calib-window.bat, calib-window-gui.bat, window_build/ -DestinationPath release_$(date +'%Y%m%d_%H%M').zip -Force -Verbose
         ;;
     "install:opencv")
         run_cmd sudo apt update && run_cmd sudo apt install -y python3 python3-pip python3-dev python3-venv build-essential libtiff6 libopencv-dev python3-opencv libtbb-dev

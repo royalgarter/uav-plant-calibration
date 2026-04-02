@@ -37,17 +37,22 @@ using namespace std;
 #define IDC_BROWSE_INPUT_BTN      109
 #define IDC_BROWSE_OUTPUT_BTN     110
 #define IDC_BROWSE_RADIO_REF_BTN  111
+#define IDC_TEMPLATE_FILE_EDIT    112
+#define IDC_BROWSE_TEMPLATE_BTN   113
 
 // --- GLOBAL STATE ---
-HWND hInputFolderEdit, hOutputFolderEdit, hRadioRefFileEdit;
+HWND hInputFolderEdit, hOutputFolderEdit, hRadioRefFileEdit, hTemplateFileEdit;
 HWND hRadioCheck, hTwoPointClickCheck, hAutoDetectCheck, hBoardThicknessEdit;
-HWND hBrowseInputBtn, hBrowseOutputBtn, hBrowseRadioRefBtn;
+HWND hBrowseInputBtn, hBrowseOutputBtn, hBrowseRadioRefBtn, hBrowseTemplateBtn;
 
-string g_inputFolder, g_outputFolder, g_radioRefFile;
+string g_inputFolder, g_outputFolder, g_radioRefFile, g_radioTemplatePath;
 bool g_enableRadio = false;
 bool g_twoPointClickMode = false;
 bool g_autoDetectBoard = false;
 int g_boardThickness = 0;
+
+// Background brush for consistent gray color
+HBRUSH g_hBackgroundBrush = nullptr;
 
 bool g_guiSubmitted = false;
 bool g_guiCancelled = false;
@@ -112,7 +117,8 @@ string browseForFile(HWND hwnd, const string& title, const string& filter) {
 
 // --- GUI ENTRY POINT ---
 bool runCalibGui(string& inputFolder, string& outputFolder, string& radioRefFile,
-                 bool& enableRadio, bool& twoPointClickMode, bool& autoDetectBoard, int& boardThickness) {
+                 bool& enableRadio, bool& twoPointClickMode, bool& autoDetectBoard, int& boardThickness,
+                 string& radioTemplatePath) {
 	// Initialize COM for file dialogs
 	CoInitialize(nullptr);
 
@@ -122,6 +128,9 @@ bool runCalibGui(string& inputFolder, string& outputFolder, string& radioRefFile
 	icex.dwICC = ICC_STANDARD_CLASSES;
 	InitCommonControlsEx(&icex);
 
+	// Create gray background brush (COLOR_BTNFACE is the standard dialog gray)
+	g_hBackgroundBrush = CreateSolidBrush(GetSysColor(COLOR_BTNFACE));
+
 	const wchar_t CLASS_NAME[] = L"UavCalibratorWindowClass";
 
 	WNDCLASSEXW wc = {};
@@ -129,7 +138,7 @@ bool runCalibGui(string& inputFolder, string& outputFolder, string& radioRefFile
 	wc.lpfnWndProc = WndProc;
 	wc.hInstance = GetModuleHandle(nullptr);
 	wc.lpszClassName = CLASS_NAME;
-	wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+	wc.hbrBackground = g_hBackgroundBrush;
 	wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
 	wc.hIcon = LoadIcon(nullptr, IDI_APPLICATION);
 
@@ -172,6 +181,7 @@ bool runCalibGui(string& inputFolder, string& outputFolder, string& radioRefFile
 		inputFolder = g_inputFolder;
 		outputFolder = g_outputFolder;
 		radioRefFile = g_radioRefFile;
+		radioTemplatePath = g_radioTemplatePath;
 		enableRadio = g_enableRadio;
 		twoPointClickMode = g_twoPointClickMode;
 		autoDetectBoard = g_autoDetectBoard;
@@ -228,6 +238,15 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) 
 												xPos + labelWidth + editWidth + 10, yPos - 2, btnWidth, 28, hwnd, (HMENU)IDC_BROWSE_RADIO_REF_BTN, GetModuleHandle(nullptr), nullptr);
 			yPos += gap;
 
+			// Radiometric Template File
+			CreateWindowExW(0, L"STATIC", L"Board Template File:", WS_VISIBLE | WS_CHILD,
+							xPos, yPos, labelWidth, height, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
+			hTemplateFileEdit = CreateWindowExW(0, L"EDIT", L"example/calib/radiometric_board.jpg", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_AUTOHSCROLL,
+												xPos + labelWidth, yPos, editWidth, height, hwnd, (HMENU)IDC_TEMPLATE_FILE_EDIT, GetModuleHandle(nullptr), nullptr);
+			hBrowseTemplateBtn = CreateWindowExW(0, L"BUTTON", L"Browse...", WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
+												xPos + labelWidth + editWidth + 10, yPos - 2, btnWidth, 28, hwnd, (HMENU)IDC_BROWSE_TEMPLATE_BTN, GetModuleHandle(nullptr), nullptr);
+			yPos += gap;
+
 			// Enable Radiometric Calibration Checkbox
 			hRadioCheck = CreateWindowExW(0, L"BUTTON", L"Enable Radiometric Calibration (--radio)",
 									   WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX,
@@ -247,12 +266,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) 
 			yPos += gap - 10;
 
 			// Board Thickness
-			CreateWindowExW(0, L"STATIC", L"Board Thickness (pixels):", WS_VISIBLE | WS_CHILD,
+			CreateWindowExW(0, L"STATIC", L"Thickness (px):", WS_VISIBLE | WS_CHILD,
 							xPos, yPos, labelWidth, height, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
-			hBoardThicknessEdit = CreateWindowExW(0, L"EDIT", L"0", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_NUMBER | ES_AUTOHSCROLL,
+			hBoardThicknessEdit = CreateWindowExW(0, L"EDIT", L"10", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_NUMBER | ES_AUTOHSCROLL,
 												xPos + labelWidth, yPos, 100, height, hwnd, (HMENU)IDC_BOARD_THICKNESS_EDIT, GetModuleHandle(nullptr), nullptr);
-			CreateWindowExW(0, L"STATIC", L"(0 = auto-detect thickness, -1 = disable auto-detect)", WS_VISIBLE | WS_CHILD | SS_GRAYTEXT,
-							xPos + labelWidth + 110, yPos + 3, 300, height, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
+			
+			// CreateWindowExW(0, L"STATIC", L"(0 = auto-detect thickness, -1 = disable auto-detect)", WS_VISIBLE | WS_CHILD | SS_GRAYTEXT,
+			// 				xPos + labelWidth + 110, yPos + 3, 300, height, hwnd, nullptr, GetModuleHandle(nullptr), nullptr);
+			
 			yPos += gap + 10;
 
 			// Separator line
@@ -294,6 +315,15 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) 
 					break;
 				}
 
+				case IDC_BROWSE_TEMPLATE_BTN: {
+					string file = browseForFile(hwnd, "Select Board Template Image",
+					                            "Image Files (*.jpg;*.jpeg;*.png;*.bmp)\0*.jpg;*.jpeg;*.png;*.bmp\0All Files (*.*)\0*.*\0");
+					if (!file.empty()) {
+						SetWindowTextA(hTemplateFileEdit, file.c_str());
+					}
+					break;
+				}
+
 				case IDC_START_BUTTON: {
 					wchar_t buffer[MAX_PATH];
 
@@ -308,6 +338,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) 
 					// Get radiometric reference file
 					GetWindowTextW(hRadioRefFileEdit, buffer, MAX_PATH);
 					g_radioRefFile = fromWide(buffer);
+
+					// Get radiometric template file
+					GetWindowTextW(hTemplateFileEdit, buffer, MAX_PATH);
+					g_radioTemplatePath = fromWide(buffer);
 
 					// Get checkbox states
 					g_enableRadio = (SendMessage(hRadioCheck, BM_GETCHECK, 0, 0) == BST_CHECKED);
@@ -372,7 +406,27 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) 
 			DestroyWindow(hwnd);
 			break;
 
+		case WM_CTLCOLORSTATIC: {
+			// Set gray background for static controls (labels, edit boxes, etc.)
+			HDC hdcStatic = (HDC)wParam;
+			SetBkColor(hdcStatic, GetSysColor(COLOR_BTNFACE));
+			SetTextColor(hdcStatic, GetSysColor(COLOR_BTNTEXT));
+			return (LRESULT)g_hBackgroundBrush;
+		}
+
+		case WM_CTLCOLOREDIT: {
+			// Set gray background for edit controls
+			HDC hdcEdit = (HDC)wParam;
+			SetBkColor(hdcEdit, GetSysColor(COLOR_BTNFACE));
+			SetTextColor(hdcEdit, GetSysColor(COLOR_BTNTEXT));
+			return (LRESULT)g_hBackgroundBrush;
+		}
+
 		case WM_DESTROY:
+			if (g_hBackgroundBrush) {
+				DeleteObject(g_hBackgroundBrush);
+				g_hBackgroundBrush = nullptr;
+			}
 			PostQuitMessage(0);
 			break;
 
