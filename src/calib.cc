@@ -17,6 +17,13 @@
 #include <opencv2/highgui.hpp>
 #include <tiffio.h>
 
+// Uncomment to enable Windows GUI support
+// #define WINGUI
+
+#ifdef WINGUI
+#include "calib-gui.cc"
+#endif
+
 using namespace std;
 using namespace std::filesystem;
 using namespace cv;
@@ -825,6 +832,9 @@ void showUsage() {
 	cout << "USAGE: ./calib <src_dir (default: .input/)> <dest_dir (default: .output/)> [--radio] [--auto]" << endl;
 	cout << "  --radio       Enable radiometric calibration." << endl;
 	cout << "  --auto        Auto-detect radiometric board (used with --radio). Optional: --auto <border_thickness>" << endl;
+#ifdef WINGUI
+	cout << "  --gui         Launch Windows GUI interface." << endl;
+#endif
 	cout << "" << endl;
 	cout << "---" << endl;
 	cout << "" << endl;
@@ -841,41 +851,86 @@ int main(int argc, char** argv) {
 
 	string inDir = ".input";
 	string outDir = ".output";
+	string radioRefFile = "radiometric_reference.csv";
 	bool doRadio = false;
 	int autoRadioThickness = -1;
 	Point radioInterval(40, 0);
+	bool useGui = false;
 
-	if (argc == 1) {
-		showUsage();
+	// Check for GUI flag first
+	if (argc > 1 && string(argv[1]) == "--gui") {
+		useGui = true;
 	}
 
-	vector<string> args;
-	for (int i = 1; i < argc; ++i) {
-		string arg = argv[i];
-		if (arg == "--radio") {
-			doRadio = true;
-			if (i + 1 < argc && argv[i+1][0] != '-') {
-				string nextArg = argv[i+1];
-				size_t comma = nextArg.find(',');
-				if (comma != string::npos) {
-					radioInterval.x = stoi(nextArg.substr(0, comma));
-					radioInterval.y = stoi(nextArg.substr(comma + 1));
+	if (useGui) {
+		#ifdef WINGUI
+		cout << "Launching GUI..." << endl;
+		
+		bool guiTwoPointClick = false, guiAutoDetect = false;
+		int guiBoardThickness = 0;
+		
+		if (!runCalibGui(inDir, outDir, radioRefFile, doRadio, guiTwoPointClick, guiAutoDetect, guiBoardThickness)) {
+			cout << "GUI cancelled or exited." << endl;
+			return 0;
+		}
+		
+		// Apply GUI settings
+		if (guiAutoDetect) {
+			autoRadioThickness = (guiBoardThickness == 0) ? 0 : guiBoardThickness;
+		}
+		if (guiTwoPointClick) {
+			autoRadioThickness = -1; // Disable auto-detect, use manual 2-point click
+		}
+		
+		cout << "GUI Configuration:" << endl;
+		cout << "  Input Folder: " << inDir << endl;
+		cout << "  Output Folder: " << outDir << endl;
+		cout << "  Radiometric Ref: " << radioRefFile << endl;
+		cout << "  Radiometric Calibration: " << (doRadio ? "ENABLED" : "disabled") << endl;
+		cout << "  Auto-Detect Board: " << (guiAutoDetect ? "ENABLED" : "disabled") << endl;
+		if (guiAutoDetect) {
+			cout << "  Board Thickness: " << autoRadioThickness << endl;
+		}
+		cout << endl;
+		
+		#else
+		cerr << "Error: GUI support not compiled. Define WINGUI and compile with MinGW-w64." << endl;
+		return 1;
+		#endif
+	} else {
+		// Original CLI argument parsing
+		if (argc == 1) {
+			showUsage();
+		}
+
+		vector<string> args;
+		for (int i = 1; i < argc; ++i) {
+			string arg = argv[i];
+			if (arg == "--radio") {
+				doRadio = true;
+				if (i + 1 < argc && argv[i+1][0] != '-') {
+					string nextArg = argv[i+1];
+					size_t comma = nextArg.find(',');
+					if (comma != string::npos) {
+						radioInterval.x = stoi(nextArg.substr(0, comma));
+						radioInterval.y = stoi(nextArg.substr(comma + 1));
+						i++;
+					}
+				}
+			} else if (arg == "--auto") {
+				autoRadioThickness = 0;
+				if (i + 1 < argc && isdigit(argv[i+1][0])) {
+					autoRadioThickness = stoi(argv[i+1]);
 					i++;
 				}
+			} else {
+				args.push_back(arg);
 			}
-		} else if (arg == "--auto") {
-			autoRadioThickness = 0;
-			if (i + 1 < argc && isdigit(argv[i+1][0])) {
-				autoRadioThickness = stoi(argv[i+1]);
-				i++;
-			}
-		} else {
-			args.push_back(arg);
 		}
-	}
 
-	if (args.size() > 0) inDir = args[0];
-	if (args.size() > 1) outDir = args[1];
+		if (args.size() > 0) inDir = args[0];
+		if (args.size() > 1) outDir = args[1];
+	}
 
 	// Create directories if they don't exist
 	if (!exists(inDir)) {
@@ -940,9 +995,9 @@ int main(int argc, char** argv) {
 	// Step 2: Collect Radiometric Calibration inputs for ALL groups upfront
 	if (doRadio) {
 		gLog << "\n--- RADIOMETRIC CALIBRATION PHASE ---" << endl;
-		
+
 		// Load radiometric reference data from config file
-		loadRadiometricRefs("radiometric_reference.csv");
+		loadRadiometricRefs(radioRefFile);
 		
 		for (auto& [prefix, data] : allGroups) {
 			ImageInfo* targetInfo = data.refInfo;
