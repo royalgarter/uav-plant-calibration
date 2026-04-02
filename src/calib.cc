@@ -397,7 +397,8 @@ void collectDnValues(const Mat& img, const Point& p56, const Point& p3, int boxS
 	}
 }
 
-RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point interval, int autoDetectThickness = -1) {
+RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point interval, int autoDetectThickness = -1, 
+                                  const string& radioDir = ".output/radio", const string& templatePath = "example/calib/radiometric_board.jpg") {
 	RadioState state;
 	Mat display;
 	RadioCoeffs coeffs;
@@ -415,7 +416,6 @@ RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point i
 	if (display.channels() == 1) cvtColor(display, display, COLOR_GRAY2BGR);
 
 	if (autoDetectThickness >= 0) {
-		string templatePath = "example/calib/radiometric_board.jpg";
 		Mat templ = imread(templatePath, IMREAD_COLOR);
 		if (!templ.empty()) {
 			cout << "  Auto-detecting board using template..." << endl;
@@ -637,11 +637,10 @@ RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point i
 	
 	// Save the image with markers for later review when auto-detect was used
 	if (autoDetectThickness >= 0) {
-		string outputDir = ".output/radio";
-		if (!exists(outputDir)) {
-			create_directories(outputDir);
+		if (!exists(radioDir)) {
+			create_directories(radioDir);
 		}
-		string savePath = outputDir + "/" + filename + "_board_preview.jpg";
+		string savePath = radioDir + "/" + filename + "_board_preview.jpg";
 		imwrite(savePath, display);
 		gLog << "  Board preview saved to: " << savePath << endl;
 	}
@@ -844,6 +843,7 @@ void showUsage() {
 	cout << "USAGE: ./calib <src_dir (default: .input/)> <dest_dir (default: .output/)> [--radio] [--auto]" << endl;
 	cout << "  --radio       Enable radiometric calibration." << endl;
 	cout << "  --auto        Auto-detect radiometric board (used with --radio). Optional: --auto <border_thickness>" << endl;
+	cout << "  --template    Path to radiometric board template image (default: example/calib/radiometric_board.jpg)" << endl;
 #ifdef WINGUI
 	cout << "  --gui         Launch Windows GUI interface." << endl;
 #endif
@@ -871,6 +871,7 @@ int main(int argc, char** argv) {
 	string inDir = ".input";
 	string outDir = ".output";
 	string radioRefFile = "radiometric_reference.csv";
+	string radioTemplatePath = "example/calib/radiometric_board.jpg";
 	bool doRadio = false;
 	int autoRadioThickness = -1;
 	Point radioInterval(40, 0);
@@ -940,6 +941,11 @@ int main(int argc, char** argv) {
 				autoRadioThickness = 0;
 				if (i + 1 < argc && isdigit(argv[i+1][0])) {
 					autoRadioThickness = stoi(argv[i+1]);
+					i++;
+				}
+			} else if (arg == "--template") {
+				if (i + 1 < argc && argv[i+1][0] != '-') {
+					radioTemplatePath = argv[i+1];
 					i++;
 				}
 			} else {
@@ -1027,7 +1033,7 @@ int main(int argc, char** argv) {
 			if (targetInfo) {
 				Mat raw = imread(targetInfo->path, IMREAD_UNCHANGED | IMREAD_ANYDEPTH | IMREAD_ANYCOLOR);
 				if (!raw.empty()) {
-					data.coeffs = getRadiometricCoeffs(raw, targetInfo->filename, radioInterval, autoRadioThickness);
+					data.coeffs = getRadiometricCoeffs(raw, targetInfo->filename, radioInterval, autoRadioThickness, radioDir, radioTemplatePath);
 					
 					// Store anchor points from the reference image
 					Point p56 = data.coeffs.p56;
