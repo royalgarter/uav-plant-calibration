@@ -270,8 +270,24 @@ struct RadioCoeffs {
 	vector<double> dns;     // For single-band images
 	vector<double> targets_r, targets_g, targets_b; // For RGB channels (Red, Green, Blue)
 	vector<double> dns_r, dns_g, dns_b;     // For RGB channels
+
+	// Anchor points for collecting DN values from all images
+	Point p56, p3;
+	int boxSize = 5;
 };
 
+struct GroupData {
+	string prefix;
+	vector<ImageInfo> images;
+	ImageInfo* refInfo = nullptr;
+	RadioCoeffs coeffs;
+	// Store DN values from all images for CSV export
+	// multispectralDns[bands 1-5][4 anchor points]
+	map<int, vector<double>> multispectralDns;
+	// rgbDns[3 channels: R,G,B][4 anchor points]
+	vector<double> rgbDns_r, rgbDns_g, rgbDns_b;
+	bool rgbCollected = false;
+};
 
 struct RadioState {
 	Point p56;
@@ -288,6 +304,44 @@ void onMouseRadio(int event, int x, int y, int flags, void* userdata) {
 		} else if (state->clicks == 1) {
 			state->p3 = Point(x, y);
 			state->clicks = 2;
+		}
+	}
+}
+
+// Helper function to collect DN values from an image using given anchor points
+void collectDnValues(const Mat& img, const Point& p56, const Point& p3, int boxSize,
+                     bool isRGB, vector<double>& dns_r, vector<double>& dns_g, vector<double>& dns_b) {
+	dns_r.clear();
+	dns_g.clear();
+	dns_b.clear();
+
+	double stepX = (p3.x - p56.x) / 3.0;
+	double stepY = (p3.y - p56.y) / 3.0;
+
+	for (int i = 0; i < 4; ++i) {
+		int cx = cvRound(p56.x + i * stepX);
+		int cy = cvRound(p56.y + i * stepY);
+
+		Rect roi(cx - boxSize / 2, cy - boxSize / 2, boxSize, boxSize);
+		roi &= Rect(0, 0, img.cols, img.rows);
+
+		if (roi.area() > 0) {
+			Scalar avg = mean(img(roi));
+			if (isRGB && img.channels() >= 3) {
+				// For RGB images, collect per-channel values (OpenCV uses BGR order)
+				dns_b.push_back(avg[0]);
+				dns_g.push_back(avg[1]);
+				dns_r.push_back(avg[2]);
+			} else {
+				// For multispectral single-band images
+				dns_r.push_back(avg[0]);
+			}
+		} else {
+			dns_r.push_back(0);
+			if (isRGB) {
+				dns_g.push_back(0);
+				dns_b.push_back(0);
+			}
 		}
 	}
 }
@@ -563,6 +617,11 @@ RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point i
 		cout << "  Coefficients calculated: a=" << coeffs.a << ", b=" << coeffs.b << endl;
 	}
 
+	// Store anchor points for collecting DN values from all images
+	coeffs.p56 = state.p56;
+	coeffs.p3 = state.p3;
+	coeffs.boxSize = boxSize;
+
 	return coeffs;
 }
 
@@ -612,45 +671,94 @@ void exportRadiometricCsv(const string& outPath, const map<string, GroupData>& a
 	csv << fixed << setprecision(6);
 
 	// Write header
-	csv << "Filename,Band,Target 56%,Target 36%,Target 12%,Target 3%,DN 56%,DN 36%,DN 12%,DN 3%,Slope (a),Intercept (b)" << endl;
+	// Format: Filename, Band, Target 56%, Target 36%, Target 12%, Target 3%,
+	//         DN_B1_P1, DN_B1_P2, DN_B1_P3, DN_B1_P4,
+	//         DN_B2_P1, DN_B2_P2, DN_B2_P3, DN_B2_P4,
+	//         DN_B3_P1, DN_B3_P2, DN_B3_P3, DN_B3_P4,
+	//         DN_B4_P1, DN_B4_P2, DN_B4_P3, DN_B4_P4,
+	//         DN_B5_P1, DN_B5_P2, DN_B5_P3, DN_B5_P4,
+	//         DN_RGB_R_P1, DN_RGB_R_P2, DN_RGB_R_P3, DN_RGB_R_P4,
+	//         DN_RGB_G_P1, DN_RGB_G_P2, DN_RGB_G_P3, DN_RGB_G_P4,
+	//         DN_RGB_B_P1, DN_RGB_B_P2, DN_RGB_B_P3, DN_RGB_B_P4,
+	//         Slope (a), Intercept (b)
+	csv << "Filename,Band,Target 56%,Target 36%,Target 12%,Target 3%,";
+	for (int band = 1; band <= 5; ++band) {
+		csv << "DN_B" << band << "_P1,DN_B" << band << "_P2,DN_B" << band << "_P3,DN_B" << band << "_P4,";
+	}
+	csv << "DN_RGB_R_P1,DN_RGB_R_P2,DN_RGB_R_P3,DN_RGB_R_P4,";
+	csv << "DN_RGB_G_P1,DN_RGB_G_P2,DN_RGB_G_P3,DN_RGB_G_P4,";
+	csv << "DN_RGB_B_P1,DN_RGB_B_P2,DN_RGB_B_P3,DN_RGB_B_P4,";
+	csv << "Slope (a),Intercept (b)" << endl;
 
 	// Iterate through all groups
 	for (const auto& [prefix, data] : allGroups) {
 		if (!data.coeffs.valid) continue;
 
-		if (data.coeffs.isRGB) {
-			// Write rows for each RGB channel
-			// Red channel
-			csv << data.coeffs.filename << ",Red,"
-				<< data.coeffs.targets_r[0] << "," << data.coeffs.targets_r[1] << ","
-				<< data.coeffs.targets_r[2] << "," << data.coeffs.targets_r[3] << ","
-				<< data.coeffs.dns_r[0] << "," << data.coeffs.dns_r[1] << ","
-				<< data.coeffs.dns_r[2] << "," << data.coeffs.dns_r[3] << ","
-				<< data.coeffs.a_r << "," << data.coeffs.b_r << endl;
-
-			// Green channel
-			csv << data.coeffs.filename << ",Green,"
-				<< data.coeffs.targets_g[0] << "," << data.coeffs.targets_g[1] << ","
-				<< data.coeffs.targets_g[2] << "," << data.coeffs.targets_g[3] << ","
-				<< data.coeffs.dns_g[0] << "," << data.coeffs.dns_g[1] << ","
-				<< data.coeffs.dns_g[2] << "," << data.coeffs.dns_g[3] << ","
-				<< data.coeffs.a_g << "," << data.coeffs.b_g << endl;
-
-			// Blue channel
-			csv << data.coeffs.filename << ",Blue,"
-				<< data.coeffs.targets_b[0] << "," << data.coeffs.targets_b[1] << ","
-				<< data.coeffs.targets_b[2] << "," << data.coeffs.targets_b[3] << ","
-				<< data.coeffs.dns_b[0] << "," << data.coeffs.dns_b[1] << ","
-				<< data.coeffs.dns_b[2] << "," << data.coeffs.dns_b[3] << ","
-				<< data.coeffs.a_b << "," << data.coeffs.b_b << endl;
-		} else {
-			// Write row for single-band multispectral image
+		// Write one row per band for multispectral, or one row for RGB
+		if (!data.coeffs.isRGB) {
+			// Multispectral image - write row with target reflectances and all DN values
 			csv << data.coeffs.filename << "," << data.coeffs.bandName << ","
 				<< data.coeffs.targets[0] << "," << data.coeffs.targets[1] << ","
-				<< data.coeffs.targets[2] << "," << data.coeffs.targets[3] << ","
-				<< data.coeffs.dns[0] << "," << data.coeffs.dns[1] << ","
-				<< data.coeffs.dns[2] << "," << data.coeffs.dns[3] << ","
-				<< data.coeffs.a << "," << data.coeffs.b << endl;
+				<< data.coeffs.targets[2] << "," << data.coeffs.targets[3] << ",";
+
+			// Write DN values for bands 1-5
+			for (int band = 1; band <= 5; ++band) {
+				auto it = data.multispectralDns.find(band);
+				if (it != data.multispectralDns.end() && it->second.size() == 4) {
+					csv << it->second[0] << "," << it->second[1] << ","
+					    << it->second[2] << "," << it->second[3] << ",";
+				} else {
+					csv << "0,0,0,0,";
+				}
+			}
+
+			// Write RGB DN values (if available)
+			if (data.rgbCollected) {
+				csv << data.rgbDns_r[0] << "," << data.rgbDns_r[1] << ","
+				    << data.rgbDns_r[2] << "," << data.rgbDns_r[3] << ",";
+				csv << data.rgbDns_g[0] << "," << data.rgbDns_g[1] << ","
+				    << data.rgbDns_g[2] << "," << data.rgbDns_g[3] << ",";
+				csv << data.rgbDns_b[0] << "," << data.rgbDns_b[1] << ","
+				    << data.rgbDns_b[2] << "," << data.rgbDns_b[3] << ",";
+			} else {
+				csv << "0,0,0,0,0,0,0,0,0,0,0,0,";
+			}
+
+			// Write coefficients
+			csv << data.coeffs.a << "," << data.coeffs.b << endl;
+		} else {
+			// RGB image - write row with RGB target reflectances and all DN values
+			csv << data.coeffs.filename << ",RGB,"
+				<< data.coeffs.targets_r[0] << "," << data.coeffs.targets_r[1] << ","
+				<< data.coeffs.targets_r[2] << "," << data.coeffs.targets_r[3] << ",";
+
+			// Write DN values for bands 1-5 (if available)
+			for (int band = 1; band <= 5; ++band) {
+				auto it = data.multispectralDns.find(band);
+				if (it != data.multispectralDns.end() && it->second.size() == 4) {
+					csv << it->second[0] << "," << it->second[1] << ","
+					    << it->second[2] << "," << it->second[3] << ",";
+				} else {
+					csv << "0,0,0,0,";
+				}
+			}
+
+			// Write RGB DN values
+			if (data.rgbCollected) {
+				csv << data.rgbDns_r[0] << "," << data.rgbDns_r[1] << ","
+				    << data.rgbDns_r[2] << "," << data.rgbDns_r[3] << ",";
+				csv << data.rgbDns_g[0] << "," << data.rgbDns_g[1] << ","
+				    << data.rgbDns_g[2] << "," << data.rgbDns_g[3] << ",";
+				csv << data.rgbDns_b[0] << "," << data.rgbDns_b[1] << ","
+				    << data.rgbDns_b[2] << "," << data.rgbDns_b[3] << ",";
+			} else {
+				csv << "0,0,0,0,0,0,0,0,0,0,0,0,";
+			}
+
+			// Write coefficients (use average of RGB coefficients for multispectral reference)
+			double avgA = (data.coeffs.a_r + data.coeffs.a_g + data.coeffs.a_b) / 3.0;
+			double avgB = (data.coeffs.b_r + data.coeffs.b_g + data.coeffs.b_b) / 3.0;
+			csv << avgA << "," << avgB << endl;
 		}
 	}
 
@@ -783,12 +891,6 @@ int main(int argc, char** argv) {
 	gLog << "========================================" << endl << endl;
 
 	// Step 1: Scan and Parse Metadata for all groups
-	struct GroupData {
-		string prefix;
-		vector<ImageInfo> images;
-		ImageInfo* refInfo = nullptr;
-		RadioCoeffs coeffs;
-	};
 	map<string, GroupData> allGroups;
 
 	gLog << "Scanning " << inDir << "..." << endl;
@@ -828,6 +930,44 @@ int main(int argc, char** argv) {
 				Mat raw = imread(targetInfo->path, IMREAD_UNCHANGED | IMREAD_ANYDEPTH | IMREAD_ANYCOLOR);
 				if (!raw.empty()) {
 					data.coeffs = getRadiometricCoeffs(raw, targetInfo->filename, radioInterval, autoRadioThickness);
+					
+					// Store anchor points from the reference image
+					Point p56 = data.coeffs.p56;
+					Point p3 = data.coeffs.p3;
+					int boxSize = data.coeffs.boxSize;
+					bool isRGB = data.coeffs.isRGB;
+					
+					if (data.coeffs.valid) {
+						gLog << "  Collecting DN values from all images in group..." << endl;
+						
+						// Collect DN values from all images in the group
+						for (auto& info : data.images) {
+							Mat img = imread(info.path, IMREAD_UNCHANGED | IMREAD_ANYDEPTH | IMREAD_ANYCOLOR);
+							if (img.empty()) continue;
+							
+							string stem = path(info.filename).stem().string();
+							if (stem.empty()) continue;
+							char lastChar = stem.back();
+							
+							if (lastChar == '0') {
+								// RGB image - collect per-channel DN values
+								vector<double> dns_r, dns_g, dns_b;
+								collectDnValues(img, p56, p3, boxSize, true, dns_r, dns_g, dns_b);
+								data.rgbDns_r = dns_r;
+								data.rgbDns_g = dns_g;
+								data.rgbDns_b = dns_b;
+								data.rgbCollected = true;
+								gLog << "    Collected RGB DN values from " << info.filename << endl;
+							} else {
+								// Multispectral image - collect single-band DN values
+								int band = lastChar - '0';
+								vector<double> dns_r, dns_g, dns_b;
+								collectDnValues(img, p56, p3, boxSize, false, dns_r, dns_g, dns_b);
+								data.multispectralDns[band] = dns_r;
+								gLog << "    Collected band " << band << " DN values from " << info.filename << endl;
+							}
+						}
+					}
 				}
 			}
 		}
