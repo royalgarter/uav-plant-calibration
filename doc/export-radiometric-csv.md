@@ -1,6 +1,27 @@
 # Plan: Export Radiometric Calibration Data to CSV
 
-This plan details the steps to export radiometric calibration data, including reference reflectances, observed DN values, and calculated coefficients, into a CSV file. This will follow the structure implied by the `dnmulti.md` template.
+This plan details the steps to export radiometric calibration data, including reference reflectances, observed DN values, and calculated coefficients, into a CSV file.
+
+## Configuration File
+
+The reference reflectance values are loaded from `radiometric_reference.csv` in the project root. This file contains the reference reflectance values for each band:
+
+```csv
+# Radiometric Reference Reflectances
+# Format: band,patch56,patch36,patch12,patch3
+# Bands: 0R=RGB_Red, 0G=RGB_Green, 0B=RGB_Blue, 1=Blue, 2=Green, 3=Red, 4=RedEdge, 5=NIR
+band,patch56,patch36,patch12,patch3
+5,0.5647,0.3582,0.1148,0.0272
+4,0.5618,0.3666,0.1191,0.0267
+3,0.5599,0.3740,0.1228,0.0262
+2,0.5567,0.3835,0.1256,0.0256
+1,0.5500704789,0.390806116,0.126676427,0.02539390723
+0R,0.5581634717,0.3790530195,0.124637386,0.02591108772
+0G,0.5554092039,0.3851975973,0.1255882691,0.02554883719
+0B,0.5500704789,0.390806116,0.126676427,0.02539390723
+```
+
+If the config file is not found, default values are used.
 
 ## Proposed Changes
 
@@ -24,18 +45,14 @@ Modify the `getRadiometricCoeffs` function in `src/calib.cc` to populate the new
 
 Create a new function, e.g., `exportRadiometricCsv`, in `src/calib.cc`. This function will:
 - Accept the output directory path (`const string& outPath`) and the `allGroups` map (`const map<string, GroupData>& allGroups`) as input.
-- Open a CSV file named `radiometric_report.csv` in the specified output directory for writing. Use standard CSV formatting with commas as delimiters and periods for decimal points.
-- Write a header row to the CSV file. The header should be derived from the `dnmulti.md` template, adapted for CSV:
-  `Filename,Band,Target 56%,Target 36%,Target 12%,Target 3%,DN 56%,DN 36%,DN 12%,DN 3%,Slope (a),Intercept (b)`
-- Iterate through each `pair` (representing a group) in the `allGroups` map.
-- For each `GroupData` (`pair.second`), if its `coeffs.valid` is true:
-    - **Handle RGB Images:** If `coeffs.isRGB` is true:
-        - Write a row for the Red channel using `coeffs.filename`, "Red", `coeffs.targets_r`, `coeffs.dns_r`, `coeffs.a_r`, and `coeffs.b_r`.
-        - Write a row for the Green channel using `coeffs.filename`, "Green", `coeffs.targets_g`, `coeffs.dns_g`, `coeffs.a_g`, and `coeffs.b_g`.
-        - Write a row for the Blue channel using `coeffs.filename`, "Blue", `coeffs.targets_b`, `coeffs.dns_b`, `coeffs.a_b`, and `coeffs.b_b`.
-    - **Handle Multispectral Images:** If `coeffs.isRGB` is false:
-        - Write a row for the single band using `coeffs.filename`, `coeffs.bandName`, `coeffs.targets`, `coeffs.dns`, `coeffs.a`, and `coeffs.b`.
-- Ensure that floating-point numbers are formatted with sufficient precision for CSV output.
+- Open a CSV file named `radiometric_report.csv` in the specified output directory for writing.
+- Write a header row with 34 columns:
+  - `Filename` - The image filename
+  - `DN_B1_P1` through `DN_B5_P4` - 20 columns for multispectral bands 1-5, 4 patches each
+  - `DN_RGB_R_P1` through `DN_RGB_B_P4` - 12 columns for RGB channels (R, G, B), 4 patches each
+  - `Slope (a)` and `Intercept (b)` - Calibration coefficients
+- Iterate through each group in `allGroups` and write one row per group with all DN values.
+- If a band's DN values are not available, output `0` as placeholder.
 
 
 ### 4. Integrate CSV Export in `main()`
@@ -51,8 +68,9 @@ In the `main` function of `src/calib.cc`:
 - **Compilation:** Ensure the code compiles without errors after adding the new struct members and function.
 - **CSV File Generation:** Run the calibration with the `--radio` flag enabled and verify that `radiometric_report.csv` is created in the output directory.
 - **CSV Content:** Check the generated CSV file for correctness:
-    - Header matches the expected format.
-    - Data for reference reflectances, DN values, slope, and intercept are accurately recorded.
-    - Multispectral and RGB data are handled correctly, with appropriate band names and per-channel details for RGB.
-    - Decimal points are consistently represented (e.g., using '.').
+  - Header has 34 columns: Filename, 20 DN columns for bands 1-5, 12 DN columns for RGB, plus Slope and Intercept.
+  - Data for all bands (1-5) and RGB channels are accurately recorded.
+  - Missing band data is filled with zeros.
+  - Decimal points are consistently represented (e.g., using '.').
+- **Config File:** Verify that reference values are correctly loaded from `radiometric_reference.csv`.
 - **Data Integrity:** Compare exported values with expected values from the tool's internal calculations.

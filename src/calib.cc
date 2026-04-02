@@ -276,6 +276,50 @@ struct RadioCoeffs {
 	int boxSize = 5;
 };
 
+// Radiometric reference data loaded from config file
+struct RadioRef {
+	vector<double> patches; // 4 values: patch56, patch36, patch12, patch3
+};
+map<string, RadioRef> gRadioRefs; // Key: band identifier ("5", "4", "3", "2", "1", "0R", "0G", "0B")
+
+// Load radiometric reference data from CSV file
+bool loadRadiometricRefs(const string& path) {
+	ifstream file(path);
+	if (!file.is_open()) {
+		gLog << "  WARNING: Could not load radiometric reference file: " << path << endl;
+		return false;
+	}
+
+	string line;
+	while (getline(file, line)) {
+		// Skip empty lines and comments
+		if (line.empty() || line[0] == '#') continue;
+		// Skip header line
+		if (line.find("band,") == 0) continue;
+
+		stringstream ss(line);
+		string band, p56, p36, p12, p3;
+		getline(ss, band, ',');
+		getline(ss, p56, ',');
+		getline(ss, p36, ',');
+		getline(ss, p12, ',');
+		getline(ss, p3, ',');
+
+		RadioRef ref;
+		ref.patches = {
+			stod(p56),
+			stod(p36),
+			stod(p12),
+			stod(p3)
+		};
+		gRadioRefs[band] = ref;
+	}
+
+	file.close();
+	gLog << "  Loaded " << gRadioRefs.size() << " radiometric reference entries from: " << path << endl;
+	return true;
+}
+
 struct GroupData {
 	string prefix;
 	vector<ImageInfo> images;
@@ -475,53 +519,60 @@ RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point i
 		}
 	}
 
-	// Reference Reflectances from Calibration Target Surface Reflectance and Camera Response
-	// Identify band for multispectral camera image using last character of file name
-	vector<double> targets_5nir = {0.5647, 0.3582, 0.1148, 0.0272}; // NIR Near-infared image No.5
-	vector<double> targets_4re = {0.5618, 0.3666, 0.1191, 0.0267}; // RE Red edge image No.4
-	vector<double> targets_3red = {0.5599, 0.3740, 0.1228, 0.0262}; // Red image No.3
-	vector<double> targets_2green = {0.5567, 0.3835, 0.1256, 0.0256}; // Green image No.2
-	vector<double> targets_1blue = {0.5500704789, 0.390806116, 0.126676427, 0.02539390723}; // Blue image No.1
-	vector<double> targets_0rgb_red = {0.5581634717, 0.3790530195, 0.124637386, 0.02591108772}; // Red channel of RGB image No.0
-	vector<double> targets_0rgb_green = {0.5554092039, 0.3851975973, 0.1255882691, 0.02554883719}; // Green channel of RGB image No.0
-	vector<double> targets_0rgb_blue = {0.5500704789, 0.390806116, 0.126676427, 0.02539390723}; // Blue channel of RGB image No.0
-
 	// Store filename in coeffs
 	coeffs.filename = filename;
 
 	// Select targets based on spectral band (last character of filename stem)
-	vector<double> targets = targets_5nir; // default to NIR
 	string stem = path(filename).stem().string();
+	
+	// Default targets if config not loaded
+	vector<double> defaultTargets = {0.5647, 0.3582, 0.1148, 0.0272};
+	vector<double> targets = defaultTargets;
+
 	if (!stem.empty()) {
 		char lastChar = stem.back();
+		
 		if (lastChar == '5') {
-			targets = targets_5nir;
+			auto it = gRadioRefs.find("5");
+			if (it != gRadioRefs.end()) targets = it->second.patches;
+			else targets = defaultTargets;
 			coeffs.bandName = "NIR";
 		}
 		else if (lastChar == '4') {
-			targets = targets_4re;
+			auto it = gRadioRefs.find("4");
+			if (it != gRadioRefs.end()) targets = it->second.patches;
+			else targets = defaultTargets;
 			coeffs.bandName = "RedEdge";
 		}
 		else if (lastChar == '3') {
-			targets = targets_3red;
+			auto it = gRadioRefs.find("3");
+			if (it != gRadioRefs.end()) targets = it->second.patches;
+			else targets = defaultTargets;
 			coeffs.bandName = "Red";
 		}
 		else if (lastChar == '2') {
-			targets = targets_2green;
+			auto it = gRadioRefs.find("2");
+			if (it != gRadioRefs.end()) targets = it->second.patches;
+			else targets = defaultTargets;
 			coeffs.bandName = "Green";
 		}
 		else if (lastChar == '1') {
-			targets = targets_1blue;
+			auto it = gRadioRefs.find("1");
+			if (it != gRadioRefs.end()) targets = it->second.patches;
+			else targets = defaultTargets;
 			coeffs.bandName = "Blue";
 		}
 		else if (lastChar == '0') {
 			// For RGB image (No.0), calibrate each channel separately
 			coeffs.isRGB = true;
 			coeffs.bandName = "RGB";
-			// Store per-channel targets
-			coeffs.targets_r = targets_0rgb_red;
-			coeffs.targets_g = targets_0rgb_green;
-			coeffs.targets_b = targets_0rgb_blue;
+			// Store per-channel targets from config
+			auto itR = gRadioRefs.find("0R");
+			auto itG = gRadioRefs.find("0G");
+			auto itB = gRadioRefs.find("0B");
+			coeffs.targets_r = (itR != gRadioRefs.end()) ? itR->second.patches : defaultTargets;
+			coeffs.targets_g = (itG != gRadioRefs.end()) ? itG->second.patches : defaultTargets;
+			coeffs.targets_b = (itB != gRadioRefs.end()) ? itB->second.patches : defaultTargets;
 		}
 	}
 
@@ -594,9 +645,9 @@ RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point i
 
 	if (coeffs.isRGB && img.channels() >= 3) {
 		// Calculate coefficients for each RGB channel
-		auto [a_r, b_r] = solveCoeffs(dns_r, targets_0rgb_red);
-		auto [a_g, b_g] = solveCoeffs(dns_g, targets_0rgb_green);
-		auto [a_b, b_b] = solveCoeffs(dns_b, targets_0rgb_blue);
+		auto [a_r, b_r] = solveCoeffs(dns_r, coeffs.targets_r);
+		auto [a_g, b_g] = solveCoeffs(dns_g, coeffs.targets_g);
+		auto [a_b, b_b] = solveCoeffs(dns_b, coeffs.targets_b);
 
 		coeffs.a_r = a_r; coeffs.b_r = b_r;
 		coeffs.a_g = a_g; coeffs.b_g = b_g;
@@ -671,7 +722,7 @@ void exportRadiometricCsv(const string& outPath, const map<string, GroupData>& a
 	csv << fixed << setprecision(6);
 
 	// Write header
-	// Format: Filename, Band, Target 56%, Target 36%, Target 12%, Target 3%,
+	// Format: Filename,
 	//         DN_B1_P1, DN_B1_P2, DN_B1_P3, DN_B1_P4,
 	//         DN_B2_P1, DN_B2_P2, DN_B2_P3, DN_B2_P4,
 	//         DN_B3_P1, DN_B3_P2, DN_B3_P3, DN_B3_P4,
@@ -681,7 +732,7 @@ void exportRadiometricCsv(const string& outPath, const map<string, GroupData>& a
 	//         DN_RGB_G_P1, DN_RGB_G_P2, DN_RGB_G_P3, DN_RGB_G_P4,
 	//         DN_RGB_B_P1, DN_RGB_B_P2, DN_RGB_B_P3, DN_RGB_B_P4,
 	//         Slope (a), Intercept (b)
-	csv << "Filename,Band,Target 56%,Target 36%,Target 12%,Target 3%,";
+	csv << "Filename,";
 	for (int band = 1; band <= 5; ++band) {
 		csv << "DN_B" << band << "_P1,DN_B" << band << "_P2,DN_B" << band << "_P3,DN_B" << band << "_P4,";
 	}
@@ -694,71 +745,40 @@ void exportRadiometricCsv(const string& outPath, const map<string, GroupData>& a
 	for (const auto& [prefix, data] : allGroups) {
 		if (!data.coeffs.valid) continue;
 
-		// Write one row per band for multispectral, or one row for RGB
-		if (!data.coeffs.isRGB) {
-			// Multispectral image - write row with target reflectances and all DN values
-			csv << data.coeffs.filename << "," << data.coeffs.bandName << ","
-				<< data.coeffs.targets[0] << "," << data.coeffs.targets[1] << ","
-				<< data.coeffs.targets[2] << "," << data.coeffs.targets[3] << ",";
+		// Write one row per group with all DN values
+		csv << data.coeffs.filename << ",";
 
-			// Write DN values for bands 1-5
-			for (int band = 1; band <= 5; ++band) {
-				auto it = data.multispectralDns.find(band);
-				if (it != data.multispectralDns.end() && it->second.size() == 4) {
-					csv << it->second[0] << "," << it->second[1] << ","
-					    << it->second[2] << "," << it->second[3] << ",";
-				} else {
-					csv << "0,0,0,0,";
-				}
-			}
-
-			// Write RGB DN values (if available)
-			if (data.rgbCollected) {
-				csv << data.rgbDns_r[0] << "," << data.rgbDns_r[1] << ","
-				    << data.rgbDns_r[2] << "," << data.rgbDns_r[3] << ",";
-				csv << data.rgbDns_g[0] << "," << data.rgbDns_g[1] << ","
-				    << data.rgbDns_g[2] << "," << data.rgbDns_g[3] << ",";
-				csv << data.rgbDns_b[0] << "," << data.rgbDns_b[1] << ","
-				    << data.rgbDns_b[2] << "," << data.rgbDns_b[3] << ",";
+		// Write DN values for bands 1-5
+		for (int band = 1; band <= 5; ++band) {
+			auto it = data.multispectralDns.find(band);
+			if (it != data.multispectralDns.end() && it->second.size() == 4) {
+				csv << it->second[0] << "," << it->second[1] << ","
+				    << it->second[2] << "," << it->second[3] << ",";
 			} else {
-				csv << "0,0,0,0,0,0,0,0,0,0,0,0,";
+				csv << "0,0,0,0,";
 			}
+		}
 
-			// Write coefficients
-			csv << data.coeffs.a << "," << data.coeffs.b << endl;
+		// Write RGB DN values
+		if (data.rgbCollected) {
+			csv << data.rgbDns_r[0] << "," << data.rgbDns_r[1] << ","
+			    << data.rgbDns_r[2] << "," << data.rgbDns_r[3] << ",";
+			csv << data.rgbDns_g[0] << "," << data.rgbDns_g[1] << ","
+			    << data.rgbDns_g[2] << "," << data.rgbDns_g[3] << ",";
+			csv << data.rgbDns_b[0] << "," << data.rgbDns_b[1] << ","
+			    << data.rgbDns_b[2] << "," << data.rgbDns_b[3] << ",";
 		} else {
-			// RGB image - write row with RGB target reflectances and all DN values
-			csv << data.coeffs.filename << ",RGB,"
-				<< data.coeffs.targets_r[0] << "," << data.coeffs.targets_r[1] << ","
-				<< data.coeffs.targets_r[2] << "," << data.coeffs.targets_r[3] << ",";
+			csv << "0,0,0,0,0,0,0,0,0,0,0,0,";
+		}
 
-			// Write DN values for bands 1-5 (if available)
-			for (int band = 1; band <= 5; ++band) {
-				auto it = data.multispectralDns.find(band);
-				if (it != data.multispectralDns.end() && it->second.size() == 4) {
-					csv << it->second[0] << "," << it->second[1] << ","
-					    << it->second[2] << "," << it->second[3] << ",";
-				} else {
-					csv << "0,0,0,0,";
-				}
-			}
-
-			// Write RGB DN values
-			if (data.rgbCollected) {
-				csv << data.rgbDns_r[0] << "," << data.rgbDns_r[1] << ","
-				    << data.rgbDns_r[2] << "," << data.rgbDns_r[3] << ",";
-				csv << data.rgbDns_g[0] << "," << data.rgbDns_g[1] << ","
-				    << data.rgbDns_g[2] << "," << data.rgbDns_g[3] << ",";
-				csv << data.rgbDns_b[0] << "," << data.rgbDns_b[1] << ","
-				    << data.rgbDns_b[2] << "," << data.rgbDns_b[3] << ",";
-			} else {
-				csv << "0,0,0,0,0,0,0,0,0,0,0,0,";
-			}
-
-			// Write coefficients (use average of RGB coefficients for multispectral reference)
+		// Write coefficients
+		if (data.coeffs.isRGB) {
+			// For RGB, use average of RGB coefficients
 			double avgA = (data.coeffs.a_r + data.coeffs.a_g + data.coeffs.a_b) / 3.0;
 			double avgB = (data.coeffs.b_r + data.coeffs.b_g + data.coeffs.b_b) / 3.0;
 			csv << avgA << "," << avgB << endl;
+		} else {
+			csv << data.coeffs.a << "," << data.coeffs.b << endl;
 		}
 	}
 
@@ -920,6 +940,10 @@ int main(int argc, char** argv) {
 	// Step 2: Collect Radiometric Calibration inputs for ALL groups upfront
 	if (doRadio) {
 		gLog << "\n--- RADIOMETRIC CALIBRATION PHASE ---" << endl;
+		
+		// Load radiometric reference data from config file
+		loadRadiometricRefs("radiometric_reference.csv");
+		
 		for (auto& [prefix, data] : allGroups) {
 			ImageInfo* targetInfo = data.refInfo;
 			if (!targetInfo && !data.images.empty()) {
