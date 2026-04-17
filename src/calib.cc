@@ -14,6 +14,7 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/video.hpp> // For findTransformECC
+#include <opencv2/features2d.hpp> // For SIFT
 #include <opencv2/highgui.hpp>
 #include <tiffio.h>
 
@@ -256,6 +257,76 @@ Mat undistortImg(const Mat& img, const ImageInfo& info) {
 		return dewarped;
 	}
 	return img.clone();
+}
+
+Mat getCLAHE(const Mat& img) {
+	Mat gray;
+	if (img.channels() > 1) cvtColor(img, gray, COLOR_BGR2GRAY);
+	else gray = img.clone();
+
+	Ptr<CLAHE> clahe = createCLAHE(2.0, Size(8, 8));
+	Mat img_clahe;
+	clahe->apply(gray, img_clahe);
+	return img_clahe;
+}
+
+Mat prepareForECC(const Mat& img) {
+	Mat gray = getCLAHE(img);
+
+	// 2. Gaussian Blur to reduce high-frequency sensor noise
+	Mat blurred;
+	GaussianBlur(gray, blurred, Size(5, 5), 0);
+
+	// 3. Calculate X and Y gradients using Scharr (better rotational symmetry than Sobel)
+	Mat grad_x, grad_y;
+	Scharr(blurred, grad_x, CV_32F, 1, 0);
+	Scharr(blurred, grad_y, CV_32F, 0, 1);
+
+	// 4. Calculate Gradient Magnitude (removes polarity, keeps structure)
+	Mat magnitude;
+	cv::magnitude(grad_x, grad_y, magnitude);
+
+	// 5. Normalize for numerical stability in ECC
+	normalize(magnitude, magnitude, 0, 1, NORM_MINMAX);
+
+	return magnitude;
+}
+
+Mat alignSIFTFallback(const Mat& refClahe, const Mat& targetClahe) {
+	Ptr<SIFT> sift = SIFT::create();
+	vector<KeyPoint> kp1, kp2;
+	Mat des1, des2;
+
+	sift->detectAndCompute(refClahe, noArray(), kp1, des1);
+	sift->detectAndCompute(targetClahe, noArray(), kp2, des2);
+
+	if (des1.empty() || des2.empty()) return Mat();
+
+	BFMatcher matcher(NORM_L2);
+	vector<vector<DMatch>> knn_matches;
+	matcher.knnMatch(des1, des2, knn_matches, 2);
+
+	vector<DMatch> good_matches;
+	for (size_t i = 0; i < knn_matches.size(); i++) {
+		if (knn_matches[i][0].distance < 0.75 * knn_matches[i][1].distance) {
+			good_matches.push_back(knn_matches[i][0]);
+		}
+	}
+
+	if (good_matches.size() > 10) {
+		vector<Point2f> src_pts, dst_pts;
+		for (size_t i = 0; i < good_matches.size(); i++) {
+			src_pts.push_back(kp1[good_matches[i].queryIdx].pt);
+			dst_pts.push_back(kp2[good_matches[i].trainIdx].pt);
+		}
+
+		// Estimate Homography using RANSAC
+		// We use findHomography to be consistent with the ECC MOTION_HOMOGRAPHY used in the main loop
+		Mat H = findHomography(dst_pts, src_pts, RANSAC);
+		return H;
+	}
+
+	return Mat();
 }
 
 // --- RADIOMETRIC CALIBRATION ---
@@ -1146,88 +1217,88 @@ int main(int argc, char** argv) {
 				H_meta.at<double>(1, 2) = info.relY;
 			}
 
-			// --- STEP C: OPTIONAL FINE TUNING (ECC) ---
+			// --- STEP C: OPTIONAL FINE TUNING (ECC + SIFT Fallback) ---
 			Mat H_total = H_meta.clone();
+			Size finalSize = dewarped.size();
 
 			if (data.refInfo && data.refInfo->path != info.path && !refMat.empty()) {
-				gLog << "    Step C: ECC Fine Alignment to " << data.refInfo->filename << "..." << endl;
+				gLog << "    Step C: Alignment to " << data.refInfo->filename << "..." << endl;
 
-				// 1. Apply metadata warp first to get close
+				// 1. RESOLUTION MATCHING: Prepare metadata transform for reference resolution
+				double scaleX = (double)refMat.cols / dewarped.cols;
+				double scaleY = (double)refMat.rows / dewarped.rows;
+				
+				Mat H_meta_ref = H_meta.clone();
+				// Column 0 and 1 map output coordinates to input coordinates. 
+				// Since output is scaled down, input coords must be scaled up.
+				H_meta_ref.col(0) *= (1.0 / scaleX);
+				H_meta_ref.col(1) *= (1.0 / scaleY);
+
+				// Apply metadata warp to get close, at reference resolution
 				Mat alignedMeta;
-				warpPerspective(dewarped, alignedMeta, H_meta, dewarped.size(), INTER_LINEAR | WARP_INVERSE_MAP);
+				warpPerspective(dewarped, alignedMeta, H_meta_ref, refMat.size(), INTER_LINEAR | WARP_INVERSE_MAP);
+				finalSize = refMat.size();
 
-				// 2. Prepare images for ECC
-				Mat alignedGray, refGray;
-				if (alignedMeta.channels() > 1) cvtColor(alignedMeta, alignedGray, COLOR_BGR2GRAY);
-				else alignedGray = alignedMeta.clone();
+				// 2. Prepare images for fine alignment
+				Mat alignedGray = prepareForECC(alignedMeta);
+				Mat refGray = prepareForECC(refMat);
 
-				if (refMat.channels() > 1) cvtColor(refMat, refGray, COLOR_BGR2GRAY);
-				else refGray = refMat.clone();
+				// Debug: Output prepared images
+				{
+					Mat d1, d2;
+					alignedGray.convertTo(d1, CV_8U, 255);
+					refGray.convertTo(d2, CV_8U, 255);
+					imwrite(calibDir + "/alignedGray_" + info.filename, d1);
+					imwrite(calibDir + "/refGray_" + info.filename, d2);
+				}
 
-				// Convert to CV_32F for ECC (required: 8U or 32F)
-				if (alignedGray.depth() != CV_32F) alignedGray.convertTo(alignedGray, CV_32F);
-				if (refGray.depth() != CV_32F) refGray.convertTo(refGray, CV_32F);
-
-				// Optional: Normalize to 0-1 range for better numerical stability with ECC
-				normalize(alignedGray, alignedGray, 0, 1, NORM_MINMAX);
-				normalize(refGray, refGray, 0, 1, NORM_MINMAX);
-
-				// 3. Run ECC
-
-				// Old Affine conversion logic
-				// int motionType = MOTION_AFFINE;
-				// Mat H_ecc = Mat::eye(2, 3, CV_32F);
-
-				// New Homography
+				// 3. Try ECC (Primary Method)
 				int motionType = MOTION_HOMOGRAPHY;
 				Mat H_ecc = Mat::eye(3, 3, CV_32F);
+				TermCriteria criteria(TermCriteria::EPS | TermCriteria::COUNT, 500, 1e-6);
 
-				TermCriteria criteria(TermCriteria::EPS | TermCriteria::COUNT, 50, 1e-3);
-
+				bool aligned = false;
 				try {
 					double cc = findTransformECC(refGray, alignedGray, H_ecc, motionType, criteria);
 					gLog << "    ECC converged (cc=" << cc << ")" << endl;
+					aligned = true;
+				} catch (const cv::Exception& e) {
+					gLog << "    ECC failed to converge. Falling back to SIFT..." << endl;
+					
+					// 4. SIFT Fallback (Safety Net)
+					Mat refClahe = getCLAHE(refMat);
+					Mat alignedClahe = getCLAHE(alignedMeta);
+					Mat H_sift = alignSIFTFallback(refClahe, alignedClahe);
+					
+					if (!H_sift.empty()) {
+						H_sift.convertTo(H_ecc, CV_32F);
+						gLog << "    SIFT alignment successful." << endl;
+						aligned = true;
+					} else {
+						gLog << "    CRITICAL: Both ECC and SIFT failed." << endl;
+					}
+				}
 
-					gLog << "    H_ecc: " << H_ecc << endl;
-
-					// 4. Compose transforms
-					// H_meta maps: Dst (Aligned) -> Src (Original)
-					// H_ecc maps: Dst (Ref) -> Src (Aligned)  [Backward mapping for WARP_INVERSE_MAP]
-					// We want: Ref -> Original
-					// H_total = H_meta * H_ecc
-
+				if (aligned) {
 					Mat H_ecc_64F;
 					H_ecc.convertTo(H_ecc_64F, CV_64F);
-
-					// Old Affine conversion logic
-					Mat H_ecc_3x3 = Mat::eye(3, 3, CV_64F);
-					H_ecc_3x3.at<double>(0,0) = H_ecc.at<float>(0,0);
-					H_ecc_3x3.at<double>(0,1) = H_ecc.at<float>(0,1);
-					H_ecc_3x3.at<double>(0,2) = H_ecc.at<float>(0,2);
-					H_ecc_3x3.at<double>(1,0) = H_ecc.at<float>(1,0);
-					H_ecc_3x3.at<double>(1,1) = H_ecc.at<float>(1,1);
-					H_ecc_3x3.at<double>(1,2) = H_ecc.at<float>(1,2);
-					H_total = H_meta * H_ecc_3x3;
-
-					// New Homography
-					H_total = H_meta * H_ecc_64F;
-
-				} catch (const cv::Exception& e) {
-					gLog << "    ECC failed: " << e.what() << endl;
+					H_total = H_meta_ref * H_ecc_64F;
+				} else {
+					H_total = H_meta_ref; // Fallback to metadata only
 				}
 			}
 
 			gLog << "    H_total: " << H_total << endl;
 			gLog << "    Saving " << info.filename << endl;
 
-			warpPerspective(dewarped, finalImg, H_total, dewarped.size(), INTER_LINEAR | WARP_INVERSE_MAP);
+			warpPerspective(dewarped, finalImg, H_total, finalSize, INTER_LINEAR | WARP_INVERSE_MAP);
 			imwrite(calibDir + "/" + info.filename, finalImg);
 
 			// Save radiometric calibrated image if radio is enabled
 			if (doRadio && data.coeffs.valid) {
 				Mat radioImg = applyRadiometricCalibration(raw, data.coeffs);
 				radioImg = undistortImg(radioImg, info);
-				warpPerspective(radioImg, radioImg, H_total, radioImg.size(), INTER_LINEAR | WARP_INVERSE_MAP);
+				warpPerspective(radioImg, radioImg, H_total, finalSize, INTER_LINEAR | WARP_INVERSE_MAP);
 				imwrite(radioDir + "/" + info.filename, radioImg);
 			}
 
