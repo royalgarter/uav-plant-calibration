@@ -9,6 +9,8 @@
 #include <map>
 #include <cstdio>
 #include <cstring>
+#include <mutex>
+#include <omp.h>
 #include <opencv2/core.hpp>
 #include <opencv2/calib3d.hpp>
 #include <opencv2/imgcodecs.hpp>
@@ -33,14 +35,17 @@ using namespace cv;
 struct Logger {
 	ofstream file;
 	bool fileOpen = false;
+	mutex mtx;
 
 	void open(const string& filename) {
+		lock_guard<mutex> lock(mtx);
 		file.open(filename);
 		fileOpen = file.is_open();
 	}
 
 	template<typename T>
 	Logger& operator<<(const T& msg) {
+		lock_guard<mutex> lock(mtx);
 		cout << msg;
 		if (fileOpen) file << msg;
 		return *this;
@@ -48,6 +53,7 @@ struct Logger {
 
 	// For endl/iomanip
 	Logger& operator<<(ostream& (*f)(ostream&)) {
+		lock_guard<mutex> lock(mtx);
 		f(cout);
 		if (fileOpen) f(file);
 		return *this;
@@ -888,7 +894,7 @@ Mat contrastStretch(const Mat& src) {
 	return dst;
 }
 
-Mat calculateNDVI(const Mat& red, const Mat& nir) {
+Mat calculateNDVI(const Mat& red, const Mat& nir, const Mat& green = Mat()) {
 	Mat r_float, n_float;
 	red.convertTo(r_float, CV_32F);
 	nir.convertTo(n_float, CV_32F);
@@ -906,6 +912,20 @@ Mat calculateNDVI(const Mat& red, const Mat& nir) {
 	threshold(ndvi, ndvi, 0, 0, THRESH_TOZERO);
 	threshold(ndvi, ndvi, 1, 1, THRESH_TRUNC);
 	
+	if (!green.empty()) {
+		// Use the Green image to create a binary mask for the "green zone" (leaves)
+		Mat green_u8 = contrastStretch(green);
+		Mat leafMask;
+		threshold(green_u8, leafMask, 0, 255, THRESH_BINARY | THRESH_OTSU);
+
+		// Minor dilution (dilation) to cover all the leaf zone
+		Mat kernel = getStructuringElement(MORPH_RECT, Size(3, 3));
+		dilate(leafMask, leafMask, kernel, Point(-1, -1), 1);
+
+		// Mask out non-leaf areas (set to 0)
+		ndvi.setTo(0, leafMask == 0);
+	}
+
 	return ndvi;
 }
 
@@ -1164,7 +1184,16 @@ int main(int argc, char** argv) {
 	}
 
 	// Step 3: Process all groups
-	for (auto& [prefix, data] : allGroups) {
+	vector<string> prefixes;
+	for (auto const& [prefix, data] : allGroups) {
+		prefixes.push_back(prefix);
+	}
+
+	#pragma omp parallel for schedule(dynamic)
+	for (int i = 0; i < (int)prefixes.size(); ++i) {
+		string prefix = prefixes[i];
+		GroupData& data = allGroups[prefix];
+
 		gLog << "****************************************" << endl;
 		gLog << "Processing group: " << prefix << " (" << data.images.size() << " images)" << endl;
 		gLog << "****************************************" << endl;
@@ -1227,9 +1256,9 @@ int main(int argc, char** argv) {
 				// 1. RESOLUTION MATCHING: Prepare metadata transform for reference resolution
 				double scaleX = (double)refMat.cols / dewarped.cols;
 				double scaleY = (double)refMat.rows / dewarped.rows;
-				
+
 				Mat H_meta_ref = H_meta.clone();
-				// Column 0 and 1 map output coordinates to input coordinates. 
+				// Column 0 and 1 map output coordinates to input coordinates.
 				// Since output is scaled down, input coords must be scaled up.
 				H_meta_ref.col(0) *= (1.0 / scaleX);
 				H_meta_ref.col(1) *= (1.0 / scaleY);
@@ -1244,13 +1273,13 @@ int main(int argc, char** argv) {
 				Mat refGray = prepareForECC(refMat);
 
 				// Debug: Output prepared images
-				{
-					Mat d1, d2;
-					alignedGray.convertTo(d1, CV_8U, 255);
-					refGray.convertTo(d2, CV_8U, 255);
-					imwrite(calibDir + "/alignedGray_" + info.filename, d1);
-					imwrite(calibDir + "/refGray_" + info.filename, d2);
-				}
+				// {
+				// 	Mat d1, d2;
+				// 	alignedGray.convertTo(d1, CV_8U, 255);
+				// 	refGray.convertTo(d2, CV_8U, 255);
+				// 	imwrite(calibDir + "/alignedGray_" + info.filename, d1);
+				// 	imwrite(calibDir + "/refGray_" + info.filename, d2);
+				// }
 
 				// 3. Try ECC (Primary Method)
 				int motionType = MOTION_HOMOGRAPHY;
@@ -1264,12 +1293,12 @@ int main(int argc, char** argv) {
 					aligned = true;
 				} catch (const cv::Exception& e) {
 					gLog << "    ECC failed to converge. Falling back to SIFT..." << endl;
-					
+
 					// 4. SIFT Fallback (Safety Net)
 					Mat refClahe = getCLAHE(refMat);
 					Mat alignedClahe = getCLAHE(alignedMeta);
 					Mat H_sift = alignSIFTFallback(refClahe, alignedClahe);
-					
+
 					if (!H_sift.empty()) {
 						H_sift.convertTo(H_ecc, CV_32F);
 						gLog << "    SIFT alignment successful." << endl;
@@ -1302,11 +1331,11 @@ int main(int argc, char** argv) {
 				imwrite(radioDir + "/" + info.filename, radioImg);
 			}
 
-			// Identify band for NDVI (last char of stem, e.g. DJI_0223.TIF -> 3=Red, 5=NIR)
+			// Identify bands for NDVI (last char of stem, e.g. DJI_0223.TIF -> 2=Green, 3=Red, 5=NIR)
 			string stem = path(info.path).stem().string();
 			if (!stem.empty()) {
 				int band = stem.back() - '0';
-				if (band == 3 || band == 5) {
+				if (band == 2 || band == 3 || band == 5) {
 					alignedBands[band] = finalImg.clone();
 				}
 			}
@@ -1315,7 +1344,13 @@ int main(int argc, char** argv) {
 		// Calculate and save NDVI
 		if (alignedBands.count(3) && alignedBands.count(5)) {
 			gLog << "\n    Step D: Calculating NDVI for group " << prefix << "..." << endl;
-			Mat ndvi = calculateNDVI(alignedBands[3], alignedBands[5]);
+
+			Mat green;
+			if (alignedBands.count(2)) {
+				green = alignedBands[2];
+			}
+
+			Mat ndvi = calculateNDVI(alignedBands[3], alignedBands[5], green);
 
 			// Save raw float NDVI
 			imwrite(ndviDir + "/" + prefix + "NDVI_raw.tif", ndvi);
