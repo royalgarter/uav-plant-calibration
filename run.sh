@@ -3,7 +3,7 @@
 # Use gcc to compile C++ files
 CC="gcc"
 MINGW="x86_64-w64-mingw32-gcc"
-CFLAGS="-Wall -Wextra -pedantic -std=c++17"
+CFLAGS="-Wall -Wextra -pedantic -std=c++17 -fopenmp"
 # Link the C++ standard library at the end
 LIBS="-lstdc++"
 WINGUI="-DWINGUI -lcomctl32 -lgdi32 -lcomdlg32 -lole32 -lshell32"
