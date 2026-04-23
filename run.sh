@@ -5,8 +5,9 @@ CFLAGS="-std=c++17 -fopenmp"
 CW_FLAGS="-Wall -Wextra -pedantic"
 
 LIBS="-lstdc++"
-WINLIBS="-ltiff -Ilibtiff -Ilibtiff/include -Llibtiff/lib -Ic:/opencv -Ic:/opencv/include -Lc:/opencv/x64/mingw/lib/ -lopencv_core455 -lopencv_calib3d455 -lopencv_imgcodecs455 -lopencv_imgproc455 -lopencv_video455 -lopencv_highgui455"
-WINGUI="-DWINGUI -lcomctl32 -lgdi32 -lcomdlg32 -lole32 -lshell32"
+WINLIBS="-ltiff -Ilibtiff -Ilibtiff/include -Llibtiff/lib -Ic:/opencv -Ic:/opencv/include -Lc:/opencv/x64/mingw/lib/ -lopencv_core455 -lopencv_calib3d455 -lopencv_imgcodecs455 -lopencv_imgproc455 -lopencv_video455 -lopencv_highgui455 -lopencv_features2d455"
+RAYLIB="-Iraylib/include -Lraylib/lib -lraylib -lgdi32 -lopengl32 -lcomctl32 -lwinmm"
+WINGUI="-DWINGUI -lgdi32 -lcomdlg32 -lole32 -lshell32"
 
 if [[ "$1" == *"win"* ]]; then
     echo "OS: window"
@@ -31,7 +32,7 @@ case "$1" in
         run_cmd $CC $CFLAGS src/calib.cc -o window_build/calib.exe $LIBS $WINLIBS
         ;;
     "build:calib-win-gui")
-        run_cmd $CC $CFLAGS src/calib.cc -o window_build/calib-gui.exe $LIBS $WINLIBS $WINGUI
+        run_cmd $CC $CFLAGS src/calib.cc -o window_build/calib-gui.exe $LIBS $WINLIBS $RAYLIB $WINGUI
         ;;
     
     ###############################################################################################

@@ -6,7 +6,7 @@ A Windows GUI has been implemented for `calib.cc` to provide a user-friendly int
 
 ## Files Created/Modified
 
-### 1. `src/calib-gui.cc` (NEW)
+### 1. `src/calib-raygui.cc` (NEW)
 Contains the Windows GUI implementation with the following features:
 - Input folder selection with browse button
 - Output folder selection with browse button
@@ -18,7 +18,7 @@ Contains the Windows GUI implementation with the following features:
 
 ### 2. `src/calib.cc` (MODIFIED)
 Integrated GUI support with the following changes:
-- Added `#include "calib-gui.cc"` under `WINGUI` define
+- Added `#include "calib-raygui.cc"` under `WINGUI` define
 - Updated `showUsage()` to mention `--gui` flag
 - Modified `main()` to handle GUI mode
 - Changed radiometric reference file to use variable instead of hardcoded path
@@ -62,7 +62,7 @@ g++ -std=c++17 -o calib.exe src/calib.cc \
 g++ -std=c++17 -o calib-gui.exe src/calib.cc -DWINGUI \
     -lopencv_core -lopencv_calib3d -lopencv_imgcodecs \
     -lopencv_imgproc -lopencv_video -lopencv_highgui \
-    -ltiff -lcomctl32 -lgdi32 -lcomdlg32 -lole32 -lshell32
+    -ltiff -lraylib -lopengl32 -lgdi32 -lwinmm -lcomdlg32 -lole32 -lshell32
 ```
 
 ### Linux (CLI only)
@@ -94,7 +94,7 @@ if(WIN32)
     add_executable(calib-gui src/calib.cc)
     target_compile_definitions(calib-gui PRIVATE WINGUI UNICODE _UNICODE)
     target_link_libraries(calib-gui ${OpenCV_LIBS} ${TIFF_LIBRARIES}
-                          comctl32 gdi32 comdlg32 ole32 shell32)
+                          raylib opengl32 gdi32 winmm comdlg32 ole32 shell32)
     target_include_directories(calib-gui PRIVATE ${OpenCV_INCLUDE_DIRS} ${TIFF_INCLUDE_DIRS})
 endif()
 ```
@@ -168,17 +168,22 @@ Calibration proceeds with selected options
 
 The implementation follows the same pattern as `fisheye.cc`:
 - Conditional compilation with `WINGUI` preprocessor define
-- Windows-specific code isolated in `calib-gui.cc`
+- Windows-specific code isolated in `calib-raygui.cc`
 - Global state for parameter passing between GUI and main
 - Message loop for Windows event handling
 - Clean separation between GUI and CLI modes
 
 ## Dependencies
 
+### UI Library
+- `raylib` - Cross-platform windowing and graphics
+- `raygui` - Immediate-mode GUI on top of raylib
+
 ### Windows Libraries
 - `user32.lib` - Window management
 - `gdi32.lib` - Graphics rendering
-- `Comctl32.lib` - Common controls (edit boxes, buttons)
+- `opengl32.lib` - OpenGL graphics support
+- `winmm.lib` - Multimedia support (needed by raylib)
 - `Comdlg32.lib` - Common dialogs (file open, folder browse)
 - `Shell32.lib` - Shell operations (folder browse)
 - `Ole32.lib` - COM initialization for dialogs

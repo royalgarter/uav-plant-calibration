@@ -24,7 +24,7 @@
 // #define WINGUI
 
 #ifdef WINGUI
-#include "calib-gui.cc"
+#include "calib-raygui.cc"
 #endif
 
 using namespace std;

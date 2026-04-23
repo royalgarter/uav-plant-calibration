@@ -44,3 +44,4 @@ output.png
 /.qwen
 /example/calib/output/DJI_0080.JPG
 /example/calib/output/radiometric_report.csv
+/raylib
