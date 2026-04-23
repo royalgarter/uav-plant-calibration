@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>UAV Plant Calibration</title>
+	<link rel="stylesheet" type="text/css" href="/litewind.css" />
+	<link rel="icon" type="image/png" href="/favicon.png">
+	<script defer src="/alpine.min.js"></script>
+	<style>
+		[x-cloak] { display: none !important; }
+		.log-container { font-family: monospace; }
+	</style>
+</head>
+<body class="min-h-screen p-4">
+	<div class="max-w-6xl mx-auto" x-data="calibrator()">
+		<header class="flex justify-between items-center bg-white p-6 ">
+			<div>
+				<h1 class="text-2xl font-bold text-gray-800">UAV Plant Calibration</h1>
+				<p class="text-gray-500">Precision radiometric calibration & NDVI generation</p>
+			</div>
+			<div class="flex items-center space-x-2">
+				<span class="px-3 py-1 bg-green-100 text-green-700 text-xs font-bold uppercase">Plant Phenomics Lab</span>
+			</div>
+		</header>
+
+		<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+			<!-- Configuration Column -->
+			<div class="lg:col-span-1 space-y-6">
+				<div class="border p-6 ">
+					<h2 class="text-lg font-semibold mb-4 flex items-center">
+						<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+						Configuration
+					</h2>
+
+					<div class="space-y-4">
+						<div>
+							<label class="block text-sm font-medium text-gray-700">Input Folder</label>
+							<div class="flex mt-1">
+								<input type="text" x-model="config.inDir" class="block w-full sm:text-sm p-2 border">
+								<button @click="$refs.inDirPicker.click()" type="button" class="ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Browse Folder">
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+								</button>
+							</div>
+							<input type="file" x-ref="inDirPicker" webkitdirectory directory class="hidden" @change="console.dir($event.target.files?.[0]);if($event.target.files.length) {config.inDir = $event.target.files[0].webkitRelativePath.split('/').slice(0, -1).join('/'); $event.target.value = '';}">
+						</div>
+						<div>
+							<label class="block text-sm font-medium text-gray-700">Output Folder</label>
+							<div class="flex mt-1">
+								<input type="text" x-model="config.outDir" class="block w-full sm:text-sm p-2 border">
+								<button @click="$refs.outDirPicker.click()" type="button" class="ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Browse Folder">
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+								</button>
+							</div>
+							<input type="file" x-ref="outDirPicker" webkitdirectory directory class="hidden" @change="console.dir($event.target.files?.[0]);if($event.target.files.length) {config.outDir = $event.target.files[0].webkitRelativePath.split('/').slice(0, -1).join('/'); $event.target.value = '';}">
+						</div>
+						<div>
+							<label class="block text-sm font-medium text-gray-700">Reference CSV</label>
+							<div class="flex mt-1">
+								<input type="text" x-model="config.radioRefFile" class="block w-full sm:text-sm p-2 border text-xs">
+								<button @click="$refs.radioRefPicker.click()" type="button" class="ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Select File">
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+								</button>
+							</div>
+							<input type="file" x-ref="radioRefPicker" accept=".csv" class="hidden" @change="console.dir($event.target.files?.[0]);if($event.target.files.length) {config.radioRefFile = $event.target.files[0].name; $event.target.value = '';}">
+						</div>
+						<div>
+							<label class="block text-sm font-medium text-gray-700">Board Template</label>
+							<div class="flex mt-1">
+								<input type="text" x-model="config.radioTemplatePath" class="block w-full sm:text-sm p-2 border text-xs">
+								<button @click="$refs.radioTemplatePicker.click()" type="button" class="ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Select File">
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+								</button>
+							</div>
+							<input type="file" x-ref="radioTemplatePicker" accept=".jpg,.jpeg,.png" class="hidden" @change="console.dir($event.target.files?.[0]);if($event.target.files.length) {config.radioTemplatePath = $event.target.files[0].name; $event.target.value = '';}">
+						</div>
+
+						<hr class="my-4">
+
+						<div class="flex items-center justify-between">
+							<span class="text-sm font-medium text-gray-700">Enable Radiometric</span>
+							<button @click="config.doRadio = !config.doRadio" :class="config.doRadio ? 'bg-blue-600' : 'bg-gray-200'" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ring-offset-2">
+								<span :class="config.doRadio ? 'translate-x-5' : 'translate-x-0'" class="pointer-events-none inline-block h-5 w-5 transform bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
+							</button>
+						</div>
+
+						<div class="flex items-center justify-between" x-show="config.doRadio" x-transition>
+							<span class="text-sm font-medium text-gray-700">Auto-Detect Board</span>
+							<button @click="toggleAuto()" :class="config.autoRadio ? 'bg-blue-600' : 'bg-gray-200'" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ring-offset-2">
+								<span :class="config.autoRadio ? 'translate-x-5' : 'translate-x-0'" class="pointer-events-none inline-block h-5 w-5 transform bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
+							</button>
+						</div>
+
+						<div x-show="config.autoRadio && config.doRadio" x-transition>
+							<label class="block text-sm font-medium text-gray-700">Board Thickness (px)</label>
+							<input type="number" x-model="config.autoRadioThickness" class="mt-1 block w-full sm:text-sm p-2 border">
+							<p class="mt-1 text-xs text-gray-500">0 = auto, >0 = specific width</p>
+						</div>
+
+						<div class="flex items-center justify-between">
+							<span class="text-sm font-medium text-gray-700 text-blue-800">ECC Optimization</span>
+							<button @click="config.optimize = !config.optimize" :class="config.optimize ? 'bg-green-600' : 'bg-gray-200'" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ring-offset-2">
+								<span :class="config.optimize ? 'translate-x-5' : 'translate-x-0'" class="pointer-events-none inline-block h-5 w-5 transform bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
+							</button>
+						</div>
+					</div>
+
+					<div class="mt-8">
+						<button @click="runCalibration()" :disabled="running" class="w-full bg-blue-600 text-white font-bold py-3 px-4 shadow hover:bg-blue-700 transition disabled:opacity-50 flex justify-center items-center">
+							<template x-if="!running">
+								<span>RUN CALIBRATION</span>
+							</template>
+							<template x-if="running">
+								<div class="flex items-center">
+									<svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+									PROCESSING...
+								</div>
+							</template>
+						</button>
+					</div>
+				</div>
+
+				<!-- Command Preview -->
+				<div class="bg-gray-800 p-4  overflow-hidden">
+					<h3 class="text-xs font-bold text-gray-400 uppercase mb-2">CLI Command Preview</h3>
+					<code class="text-green-400 text-xs break-all" x-text="cliCommand"></code>
+				</div>
+			</div>
+
+			<!-- Output/Result Column -->
+			<div class="lg:col-span-2 space-y-6">
+				<!-- Log View -->
+				<div class="border overflow-hidden flex flex-col h-64">
+					<div class="bg-gray-50 px-4 py-2 border-b flex justify-between items-center">
+						<span class="text-sm font-semibold text-gray-700">Terminal Output</span>
+						<button @click="logs = ''" class="text-xs text-gray-400 hover:text-gray-600">Clear</button>
+					</div>
+					<div class="p-2 flex-1 overflow-y-hidden bg-black text-gray-300 log-container text-xs whitespace-pre-wrap" x-ref="logArea">
+						<template x-if="!logs">
+							<span class="text-gray-600">Waiting for process to start...</span>
+						</template>
+						<!-- <span x-text="logs"></span> -->
+						<textarea class="w-full h-full" x-show="logs" x-model="logs"></textarea>
+					</div>
+				</div>
+
+				<!-- Image Gallery -->
+				<div class="border p-6 min-h-96" x-show="logs?.length > 30">
+					<div class="flex justify-between items-center mb-6">
+						<h2 class="text-lg font-semibold">Generated Outputs</h2>
+						<div class="flex space-x-2">
+							<select x-model="viewDir" @change="fetchOutputFiles()" class="text-sm border-gray-300 p-1 border">
+								<option value="calib">Calibrated</option>
+								<option value="radio">Radiometric</option>
+								<option value="ndvi">NDVI</option>
+							</select>
+							<button @click="fetchOutputFiles()" class="p-1 hover:bg-gray-100 rounded">
+								<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+							</button>
+						</div>
+					</div>
+
+					<div x-show="loadingFiles" class="flex justify-center py-12">
+						<div class="animate-spin h-12 w-12 border-b-2 border-blue-600"></div>
+					</div>
+
+					<div x-show="!loadingFiles && files.length === 0" class="text-center py-12 text-gray-400">
+						<svg class="w-16 h-16 mx-auto mb-4 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+						<p>No images found in <span class="font-mono" x-text="currentPath"></span></p>
+					</div>
+
+					<div class="grid grid-cols-2 md:grid-cols-3 gap-4" x-show="!loadingFiles && files.length > 0">
+						<template x-for="file in files" :key="file.name">
+							<div class="group relative bg-gray-50 overflow-hidden border hover:border-blue-400 transition cursor-pointer" @click="openModal(file)">
+								<img :src="currentPath + '/' + file.name" :alt="file.name" class="w-full h-32 object-cover">
+								<div class="p-2 text-sm truncate text-gray-600 bg-white" x-text="file.name"></div>
+							</div>
+						</template>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- Image Modal -->
+		<div x-show="modalOpen" x-cloak class="fixed top-0 left-0 right-0 bottom-0 z-50 flex items-center justify-center p-4 bg-black" @keydown.escape.window="modalOpen = false">
+			<button @click="modalOpen = false" class="absolute top-4 right-4 text-white hover:text-gray-300">
+				<svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+			</button>
+			<div class="max-w-full max-h-full flex flex-col items-center">
+				<img :src="modalImage" class="max-w-full max-h-96">
+				<p class="text-white mt-4 font-semibold" x-text="modalTitle"></p>
+			</div>
+		</div>
+	</div>
+
+	<script>
+		function calibrator() {
+			return {
+				config: {
+					inDir: '.input',
+					outDir: '.output',
+					radioRefFile: '.input_ref/radiometric_reference.csv',
+					radioTemplatePath: '.input_ref/radiometric_board.jpg',
+					doRadio: true,
+					autoRadio: true,
+					autoRadioThickness: 10,
+					optimize: true,
+				},
+				running: false,
+				logs: '',
+				files: [],
+				loadingFiles: false,
+				viewDir: 'radio',
+				modalOpen: false,
+				modalImage: '',
+				modalTitle: '',
+
+				get currentPath() {
+					return this.config.outDir + '/' + this.viewDir;
+				},
+
+				get cliCommand() {
+					let cmd = `./calib ${this.config.inDir} ${this.config.outDir}`;
+					if (this.config.doRadio) {
+						cmd += ' --radio';
+						if (this.config.radioRefFile) cmd += ` --ref ${this.config.radioRefFile}`;
+					}
+					if (this.config.doRadio && this.config.autoRadio) {
+						cmd += ' --auto';
+						if (this.config.autoRadioThickness > 0) cmd += ` ${this.config.autoRadioThickness}`;
+					}
+					if (this.config.radioTemplatePath) cmd += ` --template ${this.config.radioTemplatePath}`;
+					if (this.config.optimize) cmd += ' --optimize';
+					return cmd;
+				},
+
+				toggleAuto() {
+					this.config.autoRadio = !this.config.autoRadio;
+				},
+
+				async runCalibration() {
+					this.running = true;
+					this.logs = "Starting calibration task...\n";
+
+					try {
+						const payload = {
+							...this.config,
+							autoRadioThickness: this.config.autoRadio ? parseInt(this.config.autoRadioThickness) : -1
+						};
+
+						const response = await fetch('/run', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify(payload)
+						});
+
+						const result = await response.json();
+
+						if (result.stderr) this.logs += "\nSTDERR:\n" + result.stderr;
+
+						if (result.stdout) this.logs += "\nSTDOUT:\n" + result.stdout;
+
+						if (result.error) {
+							this.logs += `\nFAILED: ${result.error}`;
+						} else {
+							this.logs += `\nProcess exited with code ${result.code}`;
+							this.fetchOutputFiles();
+						}
+					} catch (err) {
+						this.logs += `\nNetwork Error: ${err.message}`;
+					} finally {
+						this.running = false;
+						this.$nextTick(() => {
+							this.$refs.logArea.scrollTop = this.$refs.logArea.scrollHeight;
+						});
+					}
+				},
+
+				async fetchOutputFiles() {
+					this.loadingFiles = true;
+					try {
+						const response = await fetch(`/list?dir=${encodeURIComponent(this.currentPath)}`);
+						const data = await response.json();
+						if (Array.isArray(data)) {
+							this.files = data.filter(f => {
+								let ext = f.ext.toLowerCase();
+								return !f.isDirectory && (ext === '.jpg' || ext === '.jpeg' || ext === '.png' || ext === '.tif');
+							});
+						} else {
+							this.files = [];
+						}
+					} catch (err) {
+						console.error('Failed to fetch files', err);
+						this.files = [];
+					} finally {
+						this.loadingFiles = false;
+					}
+				},
+
+				openModal(file) {
+					this.modalImage = this.currentPath + '/' + file.name;
+					this.modalTitle = file.name;
+					this.modalOpen = true;
+				},
+
+				init() {
+					// Initial fetch if output folder exists
+					this.fetchOutputFiles();
+				}
+			}
+		}
+	</script>
+</body>
+</html>

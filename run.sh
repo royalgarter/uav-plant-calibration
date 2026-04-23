@@ -30,12 +30,17 @@ case "$1" in
     "build:all")
         ./run.sh build:calib;
         ./run.sh build:calib-win;
+        ./run.sh build:calib-win-gui;
         ;;
     "build:calib")
         run_cmd $CC $CFLAGS src/calib.cc -o calib $LIBS -ltiff $(pkg-config --cflags --libs opencv4)
         find . -type f -name "calib" -executable
         ;;
     "build:calib-win")
+        run_cmd $CC $CFLAGS src/calib.cc -o window_build/calib.exe $LIBS $TIFFLIB $OPENCVLIB
+        find . -type f -name "calib.exe"
+        ;;
+    "build:calib-win-gui")
         run_cmd $CC $CFLAGS src/calib.cc -o window_build/calib-wingui.exe $LIBS $TIFFLIB $OPENCVLIB $RAYLIB $WINGUILIB
         find . -type f -name "calib-wingui.exe"
         ;;
@@ -55,13 +60,13 @@ case "$1" in
     ###############################################################################################
 
     "example:calib-win")
-        run_cmd ./window_build/calib-wingui.exe ./.input/ ./.output/ --optimize
+        run_cmd ./window_build/calib-wingui.exe .input .output --optimize
         ;;
     "example:calib-win-radio")
-        run_cmd ./window_build/calib-wingui.exe ./.input/ ./.output/ --optimize --radio 0,25
+        run_cmd ./window_build/calib-wingui.exe .input .output --optimize --radio 0,25
         ;;
     "example:calib-win-auto")
-        run_cmd ./window_build/calib-wingui.exe ./.input/ ./.output/ --optimize --radio 0,25 --auto 10
+        run_cmd ./window_build/calib-wingui.exe .input .output --optimize --radio 0,25 --auto 10
         ;;
     "example:calib-win-gui")
         run_cmd ./window_build/calib-wingui.exe --gui
