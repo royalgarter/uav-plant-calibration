@@ -27,6 +27,9 @@ brew link --force opencv@3
 - [MinGW-w64 for Windows](https://winlibs.com/), [Direct](https://github.com/brechtsanders/winlibs_mingw/releases/download/15.2.0posix-13.0.0-msvcrt-r1/winlibs-x86_64-posix-seh-gcc-15.2.0-mingw-w64msvcrt-13.0.0-r1.zip)
 - [OpenCV-4.5.5-x64 | MinGW-Build](https://github.com/huihut/OpenCV-MinGW-Build/tree/master), [Direct](https://github.com/huihut/OpenCV-MinGW-Build/archive/refs/tags/OpenCV-4.5.5-x64.zip)
 
+**Dependency Walker:**
+- https://github.com/lucasg/dependencies
+
 #### Environment:
 
 ```
