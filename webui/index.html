@@ -145,7 +145,7 @@
 				</div>
 
 				<!-- Image Gallery -->
-				<div class="border p-6 min-h-96" x-show="logs?.length > 30">
+				<div class="border p-6 min-h-96">
 					<div class="flex justify-between items-center mb-6">
 						<h2 class="text-lg font-semibold">Generated Outputs</h2>
 						<div class="flex space-x-2">
@@ -187,7 +187,7 @@
 				<svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
 			</button>
 			<div class="max-w-full max-h-full flex flex-col items-center">
-				<img :src="modalImage" class="max-w-full max-h-96">
+				<img :src="modalImage" class="max-w-full">
 				<p class="text-white mt-4 font-semibold" x-text="modalTitle"></p>
 			</div>
 		</div>
