@@ -31,6 +31,20 @@ using namespace std;
 using namespace std::filesystem;
 using namespace cv;
 
+// --- CONFIGURATION ---
+struct ECCOptimization {
+	bool enabled = true;
+	int downscaleFactor = 2; // Reduce image size (2 means 1/2 width/height)
+	int maxIterations = 50;  // Reduced from 500 for speed
+	double epsilon = 1e-4;   // Relaxed from 1e-6
+};
+
+struct Config {
+	ECCOptimization ecc;
+};
+
+Config gConfig;
+
 // --- LOGGING UTILITY ---
 struct Logger {
 	ofstream file;
@@ -475,7 +489,7 @@ void collectDnValues(const Mat& img, const Point& p56, const Point& p3, int boxS
 }
 
 RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point interval, int autoDetectThickness = -1, 
-                                  const string& radioDir = ".output/radio", const string& templatePath = "example/calib/radiometric_board.jpg") {
+                                  const string& radioDir = ".output/radio", const string& templatePath = ".input_ref/radiometric_board.jpg") {
 	RadioState state;
 	Mat display;
 	RadioCoeffs coeffs;
@@ -894,7 +908,7 @@ Mat contrastStretch(const Mat& src) {
 	return dst;
 }
 
-Mat calculateNDVI(const Mat& red, const Mat& nir, const Mat& green = Mat()) {
+Mat calculateNDVI(const Mat& red, const Mat& nir, const Mat& green_spectral_band = Mat(), const Mat& rgb_image = Mat(), const std::string& ndvi_output_dir = "", const std::string& debug_prefix = "") {
 	Mat r_float, n_float;
 	red.convertTo(r_float, CV_32F);
 	nir.convertTo(n_float, CV_32F);
@@ -912,18 +926,40 @@ Mat calculateNDVI(const Mat& red, const Mat& nir, const Mat& green = Mat()) {
 	threshold(ndvi, ndvi, 0, 0, THRESH_TOZERO);
 	threshold(ndvi, ndvi, 1, 1, THRESH_TRUNC);
 	
-	if (!green.empty()) {
-		// Use the Green image to create a binary mask for the "green zone" (leaves)
-		Mat green_u8 = contrastStretch(green);
-		Mat leafMask;
-		threshold(green_u8, leafMask, 0, 255, THRESH_BINARY | THRESH_OTSU);
+	gLog << "    ndvi_output_dir: " << ndvi_output_dir << endl;
+	if (!rgb_image.empty()) {
+		gLog << "    !rgb_image.empty" << endl;
 
-		// Minor dilution (dilation) to cover all the leaf zone
-		Mat kernel = getStructuringElement(MORPH_RECT, Size(3, 3));
-		dilate(leafMask, leafMask, kernel, Point(-1, -1), 1);
+		// Convert BGR to HSV
+		Mat hsv;
+		cvtColor(rgb_image, hsv, COLOR_BGR2HSV);
 
-		// Mask out non-leaf areas (set to 0)
-		ndvi.setTo(0, leafMask == 0);
+		// Define range of green color in HSV (similar to green_zone_detection.py)
+		// These values might need fine-tuning based on actual image data
+		// Lower_green = [40, 50, 50]
+		// Upper_green = [80, 255, 255]
+		Scalar lower_green = Scalar(40, 50, 50);
+		Scalar upper_green = Scalar(80, 255, 255);
+
+		// Threshold the HSV image to get only green colors
+		Mat green_mask;
+		inRange(hsv, lower_green, upper_green, green_mask);
+
+		if (!ndvi_output_dir.empty()) {
+			imwrite(ndvi_output_dir + "/" + debug_prefix + "debug_green_mask.tif", green_mask);
+		} else {
+			imwrite(debug_prefix + "debug_green_mask.tif", green_mask);
+		}
+
+		// Mask out non-green areas (set to 0) in the NDVI image
+		// Ensure the green_mask is of the same size as ndvi
+		if (ndvi.size() == green_mask.size()) {
+			ndvi.setTo(0, green_mask == 0);
+		} else {
+			// If sizes don't match, we might need to resize or handle error
+			// For now, print a warning. In a real scenario, proper resizing or error handling would be needed.
+			cerr << "Warning: RGB image mask size does not match NDVI image size. Green zone masking skipped." << endl;
+		}
 	}
 
 	return ndvi;
@@ -931,11 +967,14 @@ Mat calculateNDVI(const Mat& red, const Mat& nir, const Mat& green = Mat()) {
 
 
 void showUsage() {
-	cout << "USAGE: ./calib <src_dir (default: .input/)> <dest_dir (default: .output/)> [--radio] [--auto]" << endl;
+	cout << "USAGE: ./calib <src_dir (default: .input/)> <dest_dir (default: .output/)> [--radio] [--auto] [--optimize]" << endl;
 	cout << "  --radio       Enable radiometric calibration." << endl;
 	cout << "  --auto        Auto-detect radiometric board (used with --radio). Optional: --auto <border_thickness>" << endl;
-	cout << "  --template    Path to radiometric board template image (default: example/calib/radiometric_board.jpg)" << endl;
-	cout << "  --ref         Path to radiometric reference CSV file (default: radiometric_reference.csv)" << endl;
+	cout << "  --template    Path to radiometric board template image (default: .input_ref/radiometric_board.jpg)" << endl;
+	cout << "  --ref         Path to radiometric reference CSV file (default: .input_ref/radiometric_reference.csv)" << endl;
+	cout << "  --optimize    Enable performance optimizations for ECC alignment." << endl;
+	cout << "                Optional: --optimize <downscale>,<iterations>,<epsilon>" << endl;
+	cout << "                Default: --optimize 2,50,1e-4" << endl;
 #ifdef WINGUI
 	cout << "  --gui         Launch Windows GUI interface." << endl;
 #endif
@@ -962,8 +1001,8 @@ int main(int argc, char** argv) {
 
 	string inDir = ".input";
 	string outDir = ".output";
-	string radioRefFile = "example/calib/radiometric_reference.csv";
-	string radioTemplatePath = "example/calib/radiometric_board.jpg";
+	string radioRefFile = ".input_ref/radiometric_reference.csv";
+	string radioTemplatePath = ".input_ref/radiometric_board.jpg";
 	bool doRadio = false;
 	int autoRadioThickness = -1;
 	Point radioInterval(40, 0);
@@ -980,8 +1019,9 @@ int main(int argc, char** argv) {
 		
 		bool guiTwoPointClick = false, guiAutoDetect = false;
 		int guiBoardThickness = 0;
-		string guiTemplatePath = "example/calib/radiometric_board.jpg";
+		string guiTemplatePath = radioTemplatePath;
 
+		gConfig.ecc.enabled = true; // Enabled by default in CLI
 		if (!runCalibGui(inDir, outDir, radioRefFile, doRadio, guiTwoPointClick, guiAutoDetect, guiBoardThickness, guiTemplatePath)) {
 			cout << "GUI cancelled or exited." << endl;
 			return 0;
@@ -1018,6 +1058,8 @@ int main(int argc, char** argv) {
 			showUsage();
 		}
 
+		gConfig.ecc.enabled = false; // Disabled by default in CLI
+
 		vector<string> args;
 		for (int i = 1; i < argc; ++i) {
 			string arg = argv[i];
@@ -1031,6 +1073,20 @@ int main(int argc, char** argv) {
 						radioInterval.y = stoi(nextArg.substr(comma + 1));
 						i++;
 					}
+				}
+			} else if (arg == "--optimize") {
+				gConfig.ecc.enabled = true;
+				if (i + 1 < argc && argv[i+1][0] != '-') {
+					string optStr = argv[i+1];
+					stringstream ss(optStr);
+					string segment;
+					vector<string> parts;
+					while(getline(ss, segment, ',')) parts.push_back(segment);
+					
+					if (parts.size() >= 1) gConfig.ecc.downscaleFactor = stoi(parts[0]);
+					if (parts.size() >= 2) gConfig.ecc.maxIterations = stoi(parts[1]);
+					if (parts.size() >= 3) gConfig.ecc.epsilon = stod(parts[2]);
+					i++;
 				}
 			} else if (arg == "--auto") {
 				autoRadioThickness = 0;
@@ -1189,7 +1245,9 @@ int main(int argc, char** argv) {
 		prefixes.push_back(prefix);
 	}
 
-	#pragma omp parallel for schedule(dynamic)
+	gLog << "\n" << endl;
+
+	// #pragma omp parallel for schedule(dynamic)
 	for (int i = 0; i < (int)prefixes.size(); ++i) {
 		string prefix = prefixes[i];
 		GroupData& data = allGroups[prefix];
@@ -1215,6 +1273,7 @@ int main(int argc, char** argv) {
 
 		map<int, Mat> alignedBands;
 
+		// #pragma omp parallel for schedule(dynamic)
 		for (auto& info : data.images) {
 			gLog << "\n  [Image: " << info.filename << "]" << endl;
 
@@ -1252,6 +1311,7 @@ int main(int argc, char** argv) {
 
 			if (data.refInfo && data.refInfo->path != info.path && !refMat.empty()) {
 				gLog << "    Step C: Alignment to " << data.refInfo->filename << "..." << endl;
+				clock_t startC = clock();
 
 				// 1. RESOLUTION MATCHING: Prepare metadata transform for reference resolution
 				double scaleX = (double)refMat.cols / dewarped.cols;
@@ -1265,46 +1325,73 @@ int main(int argc, char** argv) {
 
 				// Apply metadata warp to get close, at reference resolution
 				Mat alignedMeta;
+				clock_t tWarp = clock();
 				warpPerspective(dewarped, alignedMeta, H_meta_ref, refMat.size(), INTER_LINEAR | WARP_INVERSE_MAP);
+				gLog << "      - Metadata warp: " << fixed << setprecision(2) << double(clock() - tWarp) / CLOCKS_PER_SEC << "s" << endl;
 				finalSize = refMat.size();
 
 				// 2. Prepare images for fine alignment
+				clock_t tPrep = clock();
 				Mat alignedGray = prepareForECC(alignedMeta);
 				Mat refGray = prepareForECC(refMat);
 
-				// Debug: Output prepared images
-				// {
-				// 	Mat d1, d2;
-				// 	alignedGray.convertTo(d1, CV_8U, 255);
-				// 	refGray.convertTo(d2, CV_8U, 255);
-				// 	imwrite(calibDir + "/alignedGray_" + info.filename, d1);
-				// 	imwrite(calibDir + "/refGray_" + info.filename, d2);
-				// }
+				// ECC Optimization: Downscale images if enabled
+				Mat eccRef = refGray;
+				Mat eccAligned = alignedGray;
+				float eccScale = 1.0f;
+
+				if (gConfig.ecc.enabled && gConfig.ecc.downscaleFactor > 1) {
+					eccScale = 1.0f / gConfig.ecc.downscaleFactor;
+					resize(refGray, eccRef, Size(), eccScale, eccScale, INTER_AREA);
+					resize(alignedGray, eccAligned, Size(), eccScale, eccScale, INTER_AREA);
+					gLog << "      - Optimization: Downscaled images by " << gConfig.ecc.downscaleFactor << "x" << endl;
+				}
+				gLog << "      - Image preparation: " << fixed << setprecision(2) << double(clock() - tPrep) / CLOCKS_PER_SEC << "s" << endl;
 
 				// 3. Try ECC (Primary Method)
 				int motionType = MOTION_HOMOGRAPHY;
 				Mat H_ecc = Mat::eye(3, 3, CV_32F);
-				TermCriteria criteria(TermCriteria::EPS | TermCriteria::COUNT, 500, 1e-6);
+				
+				// Configure criteria based on optimization
+				int maxIter = gConfig.ecc.enabled ? gConfig.ecc.maxIterations : 500;
+				double eps = gConfig.ecc.enabled ? gConfig.ecc.epsilon : 1e-6;
+				TermCriteria criteria(TermCriteria::EPS | TermCriteria::COUNT, maxIter, eps);
 
 				bool aligned = false;
+				clock_t tECC = clock();
 				try {
-					double cc = findTransformECC(refGray, alignedGray, H_ecc, motionType, criteria);
-					gLog << "    ECC converged (cc=" << cc << ")" << endl;
+					double cc = findTransformECC(eccRef, eccAligned, H_ecc, motionType, criteria);
+					
+					// If we downscaled, we need to adjust the resulting Homography matrix
+					if (eccScale != 1.0f) {
+						// H_full = S_inv * H_down * S
+						// where S is the scaling matrix: [s 0 0; 0 s 0; 0 0 1]
+						// S_inv is: [1/s 0 0; 0 1/s 0; 0 0 1]
+						// For Homography, this means scaling the translation components (H02, H12) 
+						// and the perspective components (H20, H21) accordingly.
+						H_ecc.at<float>(0, 2) /= eccScale;
+						H_ecc.at<float>(1, 2) /= eccScale;
+						H_ecc.at<float>(2, 0) *= eccScale;
+						H_ecc.at<float>(2, 1) *= eccScale;
+					}
+
+					gLog << "      - ECC converged (cc=" << cc << ", took " << fixed << setprecision(2) << double(clock() - tECC) / CLOCKS_PER_SEC << "s)" << endl;
 					aligned = true;
 				} catch (const cv::Exception& e) {
-					gLog << "    ECC failed to converge. Falling back to SIFT..." << endl;
+					gLog << "      - ECC failed after " << fixed << setprecision(2) << double(clock() - tECC) / CLOCKS_PER_SEC << "s. Falling back to SIFT..." << endl;
 
 					// 4. SIFT Fallback (Safety Net)
+					clock_t tSIFT = clock();
 					Mat refClahe = getCLAHE(refMat);
 					Mat alignedClahe = getCLAHE(alignedMeta);
 					Mat H_sift = alignSIFTFallback(refClahe, alignedClahe);
 
 					if (!H_sift.empty()) {
 						H_sift.convertTo(H_ecc, CV_32F);
-						gLog << "    SIFT alignment successful." << endl;
+						gLog << "      - SIFT alignment successful (took " << fixed << setprecision(2) << double(clock() - tSIFT) / CLOCKS_PER_SEC << "s)" << endl;
 						aligned = true;
 					} else {
-						gLog << "    CRITICAL: Both ECC and SIFT failed." << endl;
+						gLog << "      - CRITICAL: Both ECC and SIFT failed (SIFT took " << fixed << setprecision(2) << double(clock() - tSIFT) / CLOCKS_PER_SEC << "s)" << endl;
 					}
 				}
 
@@ -1315,20 +1402,25 @@ int main(int argc, char** argv) {
 				} else {
 					H_total = H_meta_ref; // Fallback to metadata only
 				}
+				gLog << "      - Step C Total: " << fixed << setprecision(2) << double(clock() - startC) / CLOCKS_PER_SEC << "s" << endl;
 			}
 
 			gLog << "    H_total: " << H_total << endl;
-			gLog << "    Saving " << info.filename << endl;
+			gLog << "    Saving " << info.filename << "..." << endl;
 
+			clock_t tFinalWarp = clock();
 			warpPerspective(dewarped, finalImg, H_total, finalSize, INTER_LINEAR | WARP_INVERSE_MAP);
 			imwrite(calibDir + "/" + info.filename, finalImg);
+			gLog << "      - Final warp & save: " << fixed << setprecision(2) << double(clock() - tFinalWarp) / CLOCKS_PER_SEC << "s" << endl;
 
 			// Save radiometric calibrated image if radio is enabled
 			if (doRadio && data.coeffs.valid) {
+				clock_t tRadio = clock();
 				Mat radioImg = applyRadiometricCalibration(raw, data.coeffs);
 				radioImg = undistortImg(radioImg, info);
 				warpPerspective(radioImg, radioImg, H_total, finalSize, INTER_LINEAR | WARP_INVERSE_MAP);
 				imwrite(radioDir + "/" + info.filename, radioImg);
+				gLog << "      - Radiometric processing: " << fixed << setprecision(2) << double(clock() - tRadio) / CLOCKS_PER_SEC << "s" << endl;
 			}
 
 			// Identify bands for NDVI (last char of stem, e.g. DJI_0223.TIF -> 2=Green, 3=Red, 5=NIR)
@@ -1344,13 +1436,9 @@ int main(int argc, char** argv) {
 		// Calculate and save NDVI
 		if (alignedBands.count(3) && alignedBands.count(5)) {
 			gLog << "\n    Step D: Calculating NDVI for group " << prefix << "..." << endl;
+			clock_t startD = clock();
 
-			Mat green;
-			if (alignedBands.count(2)) {
-				green = alignedBands[2];
-			}
-
-			Mat ndvi = calculateNDVI(alignedBands[3], alignedBands[5], green);
+			Mat ndvi = calculateNDVI(alignedBands[3], alignedBands[5], alignedBands[2], alignedBands[0], ndviDir, prefix);
 
 			// Save raw float NDVI
 			imwrite(ndviDir + "/" + prefix + "NDVI_raw.tif", ndvi);
@@ -1361,6 +1449,7 @@ int main(int argc, char** argv) {
 			applyColorMap(ndvi_u8, ndvi_color, COLORMAP_JET);
 			imwrite(ndviDir + "/" + prefix + "NDVI_color.jpg", ndvi_color);
 			gLog << "    NDVI saved to " << prefix + "NDVI_raw.tif and " << prefix + "NDVI_color.jpg" << endl;
+			gLog << "    Step D Total: " << fixed << setprecision(2) << double(clock() - startD) / CLOCKS_PER_SEC << "s" << endl;
 		}
 	}
 
