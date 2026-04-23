@@ -965,7 +965,6 @@ Mat calculateNDVI(const Mat& red, const Mat& nir, const Mat& green_spectral_band
 	return ndvi;
 }
 
-
 void showUsage() {
 	cout << "USAGE: ./calib <src_dir (default: .input/)> <dest_dir (default: .output/)> [--radio] [--auto] [--optimize]" << endl;
 	cout << "  --radio       Enable radiometric calibration." << endl;
@@ -977,12 +976,12 @@ void showUsage() {
 	cout << "                Default: --optimize 2,50,1e-4" << endl;
 #ifdef WINGUI
 	cout << "  --gui         Launch Windows GUI interface." << endl;
+	cout << "  --cli         Launch Command-Line interface." << endl;
 #endif
 	cout << "" << endl;
 	cout << "---" << endl;
 	cout << "" << endl;
 }
-
 
 int main(int argc, char** argv) {
 	// Generate log filename
@@ -1006,19 +1005,27 @@ int main(int argc, char** argv) {
 	bool doRadio = false;
 	int autoRadioThickness = -1;
 	Point radioInterval(40, 0);
-	bool useGui = false;
 
 	// Check for GUI flag first
+	#ifdef WINGUI
+	bool useGui = true;
+	if (argc > 1 && string(argv[1]) == "--cli") {
+		useGui = false;
+	}
+	#else
+	bool useGui = false;
 	if (argc > 1 && string(argv[1]) == "--gui") {
 		useGui = true;
 	}
+	#endif
 
 	if (useGui) {
 		#ifdef WINGUI
 		cout << "Launching GUI..." << endl;
 		
-		bool guiTwoPointClick = false, guiAutoDetect = false;
-		int guiBoardThickness = 0;
+		bool guiTwoPointClick = false;
+		bool guiAutoDetect = false;
+		int guiBoardThickness = 10;
 		string guiTemplatePath = radioTemplatePath;
 
 		gConfig.ecc.enabled = true; // Enabled by default in CLI

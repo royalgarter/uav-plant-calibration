@@ -9,6 +9,7 @@
 #include <windows.h>
 #include <shlobj.h>
 #include <commctrl.h>
+#include <shobjidl.h>
 #undef Rectangle
 #undef CloseWindow
 #undef ShowCursor
@@ -40,19 +41,33 @@ static wstring toWide(const string& s) {
 }
 
 static string browseForFolder(const string& title) {
-    BROWSEINFOW bi = {};
-    bi.lpszTitle = L"Select Folder";
-    bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
-    LPITEMIDLIST pidl = SHBrowseForFolderW(&bi);
-    if (pidl != nullptr) {
-        wchar_t path[MAX_PATH];
-        if (SHGetPathFromIDListW(pidl, path)) {
-            CoTaskMemFree(pidl);
-            return fromWide(path);
+    string result = "";
+    IFileOpenDialog *pfd = NULL;
+    HRESULT hr = CoCreateInstance(CLSID_FileOpenDialog, NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pfd));
+    
+    if (SUCCEEDED(hr)) {
+        DWORD dwOptions;
+        if (SUCCEEDED(pfd->GetOptions(&dwOptions))) {
+            pfd->SetOptions(dwOptions | FOS_PICKFOLDERS);
         }
-        CoTaskMemFree(pidl);
+        
+        wstring wTitle = toWide(title);
+        pfd->SetTitle(wTitle.c_str());
+
+        if (SUCCEEDED(pfd->Show(NULL))) {
+            IShellItem *psi;
+            if (SUCCEEDED(pfd->GetResult(&psi))) {
+                LPWSTR pszFilePath = NULL;
+                if (SUCCEEDED(psi->GetDisplayName(SIGDN_FILESYSPATH, &pszFilePath))) {
+                    result = fromWide(pszFilePath);
+                    CoTaskMemFree(pszFilePath);
+                }
+                psi->Release();
+            }
+        }
+        pfd->Release();
     }
-    return "";
+    return result;
 }
 
 static string browseForFile(const string& title, const string& filter) {
@@ -94,6 +109,7 @@ bool runCalibGui(string& inputFolder, string& outputFolder, string& radioRefFile
     const int screenHeight = 580;
 
     // Set config for better UI look
+    // SetConfigFlags(FLAG_WINDOW_UNDECORATED);
     InitWindow(screenWidth, screenHeight, "UAV Plant Calibration");
     SetTargetFPS(60);
 
@@ -110,7 +126,7 @@ bool runCalibGui(string& inputFolder, string& outputFolder, string& radioRefFile
         ClearBackground(GetColor(GuiGetStyle(DEFAULT, BACKGROUND_COLOR)));
 
         // Draw GUI
-        if (GuiWindowBox((Rectangle){ 0, 0, (float)screenWidth, (float)screenHeight }, "UAV Plant Calibration Parameters")) {
+        if (GuiWindowBox((Rectangle){ 0, 0, (float)screenWidth, (float)screenHeight }, "")) {
             cancelled = true;
         }
 

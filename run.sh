@@ -5,9 +5,10 @@ CFLAGS="-std=c++17 -fopenmp"
 CW_FLAGS="-Wall -Wextra -pedantic"
 
 LIBS="-lstdc++"
-WINLIBS="-ltiff -Ilibtiff -Ilibtiff/include -Llibtiff/lib -Ic:/opencv -Ic:/opencv/include -Lc:/opencv/x64/mingw/lib/ -lopencv_core455 -lopencv_calib3d455 -lopencv_imgcodecs455 -lopencv_imgproc455 -lopencv_video455 -lopencv_highgui455 -lopencv_features2d455"
-RAYLIB="-Iraylib/include -Lraylib/lib -lraylib -lopengl32 -lgdi32 -lwinmm -lcomdlg32 -lcomctl32 -lole32 -lshell32"
-WINGUI="-DWINGUI -lgdi32 -lcomdlg32 -lole32 -lshell32"
+TIFFLIB="-ltiff -Ilibtiff -Ilibtiff/include -Llibtiff/lib"
+OPENCVLIB="-Ic:/opencv -Ic:/opencv/include -Lc:/opencv/x64/mingw/lib/ -lopencv_core455 -lopencv_calib3d455 -lopencv_imgcodecs455 -lopencv_imgproc455 -lopencv_video455 -lopencv_highgui455 -lopencv_features2d455"
+RAYLIB="-Iraylib/include -Lraylib/lib -lraylib"
+WINGUILIB="-DWINGUI -lopengl32 -lgdi32 -lwinmm -lcomdlg32 -lcomctl32 -lole32 -lshell32 -luuid"
 
 if [[ "$1" == *"win"* ]]; then
     echo "OS: window"
@@ -19,17 +20,24 @@ else
 fi
 
 run_cmd() {
+    echo "---"
     echo "$@"
     echo "---"
     $PS_CMD "$@"
 }
 
 case "$1" in
+    "build:all")
+        ./run.sh build:calib;
+        ./run.sh build:calib-win;
+        ;;
     "build:calib")
-        run_cmd $CC $CFLAGS src/calib.cc -o calib -ltiff $(pkg-config --cflags --libs opencv4) $LIBS
+        run_cmd $CC $CFLAGS src/calib.cc -o calib $LIBS -ltiff $(pkg-config --cflags --libs opencv4)
+        find . -type f -name "calib" -executable
         ;;
     "build:calib-win")
-        run_cmd $CC $CFLAGS src/calib.cc -o window_build/calib-wingui.exe $LIBS $WINLIBS $RAYLIB $WINGUI
+        run_cmd $CC $CFLAGS src/calib.cc -o window_build/calib-wingui.exe $LIBS $TIFFLIB $OPENCVLIB $RAYLIB $WINGUILIB
+        find . -type f -name "calib-wingui.exe"
         ;;
     
     ###############################################################################################
@@ -56,7 +64,7 @@ case "$1" in
         run_cmd ./window_build/calib-wingui.exe ./.input/ ./.output/ --optimize --radio 0,25 --auto 10
         ;;
     "example:calib-win-gui")
-        run_cmd ./window_build/calib-wingui.exe --gui --optimize
+        run_cmd ./window_build/calib-wingui.exe --gui
         ;;
     
     ############################################################################################### 

@@ -3,15 +3,6 @@
   "version": "0.1.3",
   "description": "A opencv uav camera calib.",
   "scripts": {
-    "build:calib": "bash run.sh build:calib",
-    "build:calib-win": "bash run.sh build:calib-win",
-    "example:calib": "bash run.sh example:calib",
-    "example:calib-radio": "bash run.sh example:calib-radio",
-    "example:calib-auto": "bash run.sh example:calib-auto",
-    "build:fisheye": "bash run.sh build:fisheye",
-    "build:fisheye-win": "bash run.sh build:fisheye-win",
-    "example:fisheye": "bash run.sh example:fisheye",
-    "install:opencv": "bash run.sh install:opencv"
   },
   "author": "royalgarter <royalgarter@gmail.com>, Sigoden Huang <sigoden@gmail.com> (https://sigoden.com/)",
   "license": "MIT",
