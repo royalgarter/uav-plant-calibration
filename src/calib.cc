@@ -946,9 +946,9 @@ Mat calculateNDVI(const Mat& red, const Mat& nir, const Mat& green_spectral_band
 		inRange(hsv, lower_green, upper_green, green_mask);
 
 		if (!ndvi_output_dir.empty()) {
-			imwrite(ndvi_output_dir + "/" + debug_prefix + "debug_green_mask.tif", green_mask);
+			imwrite(ndvi_output_dir + "/" + debug_prefix + "green_mask.tif", green_mask);
 		} else {
-			imwrite(debug_prefix + "debug_green_mask.tif", green_mask);
+			imwrite(debug_prefix + "green_mask.tif", green_mask);
 		}
 
 		// Mask out non-green areas (set to 0) in the NDVI image
@@ -1254,7 +1254,6 @@ int main(int argc, char** argv) {
 
 	gLog << "\n" << endl;
 
-	// #pragma omp parallel for schedule(dynamic)
 	for (int i = 0; i < (int)prefixes.size(); ++i) {
 		string prefix = prefixes[i];
 		GroupData& data = allGroups[prefix];
@@ -1280,13 +1279,16 @@ int main(int argc, char** argv) {
 
 		map<int, Mat> alignedBands;
 
-		// #pragma omp parallel for schedule(dynamic)
-		for (auto& info : data.images) {
-			gLog << "\n  [Image: " << info.filename << "]" << endl;
+		#pragma omp parallel for schedule(dynamic)
+		for (int j = 0; j < (int)data.images.size(); ++j) {
+			auto& info = data.images[j];
+			stringstream ss;
+			ss << "\n  [Image: " << info.filename << "]" << endl;
 
 			Mat raw = imread(info.path, IMREAD_UNCHANGED | IMREAD_ANYDEPTH | IMREAD_ANYCOLOR);
 			if (raw.empty()) {
-				gLog << "    Error: could not load " << info.path << endl;
+				ss << "    Error: could not load " << info.path << endl;
+				gLog << ss.str();
 				continue;
 			}
 
@@ -1296,18 +1298,18 @@ int main(int argc, char** argv) {
 			}
 
 			// --- STEP A: DEWARP ALIGNMENT (Metadata) ---
-			gLog << "    Step A: Dewarping..." << endl;
+			ss << "    Step A: Dewarping..." << endl;
 			Mat dewarped = undistortImg(processed, info);
 			Mat finalImg;
 
 			// --- STEP B: INITIAL ALIGNMENT (Metadata) ---
 			Mat H_meta = Mat::eye(3, 3, CV_64F);
 			if (info.foundH) {
-				gLog << "    Step B: Applying H_meta" << endl;
+				ss << "    Step B: Applying H_meta" << endl;
 				H_meta = info.H;
 			} else if (abs(info.relX) > 0.0001 || abs(info.relY) > 0.0001) {
 				// Translation
-				gLog << "    Step B: Translation (" << info.relX << ", " << info.relY << ")" << endl;
+				ss << "    Step B: Translation (" << info.relX << ", " << info.relY << ")" << endl;
 				H_meta.at<double>(0, 2) = info.relX;
 				H_meta.at<double>(1, 2) = info.relY;
 			}
@@ -1317,7 +1319,7 @@ int main(int argc, char** argv) {
 			Size finalSize = dewarped.size();
 
 			if (data.refInfo && data.refInfo->path != info.path && !refMat.empty()) {
-				gLog << "    Step C: Alignment to " << data.refInfo->filename << "..." << endl;
+				ss << "    Step C: Alignment to " << data.refInfo->filename << "..." << endl;
 				clock_t startC = clock();
 
 				// 1. RESOLUTION MATCHING: Prepare metadata transform for reference resolution
@@ -1334,7 +1336,7 @@ int main(int argc, char** argv) {
 				Mat alignedMeta;
 				clock_t tWarp = clock();
 				warpPerspective(dewarped, alignedMeta, H_meta_ref, refMat.size(), INTER_LINEAR | WARP_INVERSE_MAP);
-				gLog << "      - Metadata warp: " << fixed << setprecision(2) << double(clock() - tWarp) / CLOCKS_PER_SEC << "s" << endl;
+				ss << "      - Metadata warp: " << fixed << setprecision(2) << double(clock() - tWarp) / CLOCKS_PER_SEC << "s" << endl;
 				finalSize = refMat.size();
 
 				// 2. Prepare images for fine alignment
@@ -1351,9 +1353,9 @@ int main(int argc, char** argv) {
 					eccScale = 1.0f / gConfig.ecc.downscaleFactor;
 					resize(refGray, eccRef, Size(), eccScale, eccScale, INTER_AREA);
 					resize(alignedGray, eccAligned, Size(), eccScale, eccScale, INTER_AREA);
-					gLog << "      - Optimization: Downscaled images by " << gConfig.ecc.downscaleFactor << "x" << endl;
+					ss << "      - Optimization: Downscaled images by " << gConfig.ecc.downscaleFactor << "x" << endl;
 				}
-				gLog << "      - Image preparation: " << fixed << setprecision(2) << double(clock() - tPrep) / CLOCKS_PER_SEC << "s" << endl;
+				ss << "      - Image preparation: " << fixed << setprecision(2) << double(clock() - tPrep) / CLOCKS_PER_SEC << "s" << endl;
 
 				// 3. Try ECC (Primary Method)
 				int motionType = MOTION_HOMOGRAPHY;
@@ -1382,10 +1384,10 @@ int main(int argc, char** argv) {
 						H_ecc.at<float>(2, 1) *= eccScale;
 					}
 
-					gLog << "      - ECC converged (cc=" << cc << ", took " << fixed << setprecision(2) << double(clock() - tECC) / CLOCKS_PER_SEC << "s)" << endl;
+					ss << "      - ECC converged (cc=" << cc << ", took " << fixed << setprecision(2) << double(clock() - tECC) / CLOCKS_PER_SEC << "s)" << endl;
 					aligned = true;
 				} catch (const cv::Exception& e) {
-					gLog << "      - ECC failed after " << fixed << setprecision(2) << double(clock() - tECC) / CLOCKS_PER_SEC << "s. Falling back to SIFT..." << endl;
+					ss << "      - ECC failed after " << fixed << setprecision(2) << double(clock() - tECC) / CLOCKS_PER_SEC << "s. Falling back to SIFT..." << endl;
 
 					// 4. SIFT Fallback (Safety Net)
 					clock_t tSIFT = clock();
@@ -1395,10 +1397,10 @@ int main(int argc, char** argv) {
 
 					if (!H_sift.empty()) {
 						H_sift.convertTo(H_ecc, CV_32F);
-						gLog << "      - SIFT alignment successful (took " << fixed << setprecision(2) << double(clock() - tSIFT) / CLOCKS_PER_SEC << "s)" << endl;
+						ss << "      - SIFT alignment successful (took " << fixed << setprecision(2) << double(clock() - tSIFT) / CLOCKS_PER_SEC << "s)" << endl;
 						aligned = true;
 					} else {
-						gLog << "      - CRITICAL: Both ECC and SIFT failed (SIFT took " << fixed << setprecision(2) << double(clock() - tSIFT) / CLOCKS_PER_SEC << "s)" << endl;
+						ss << "      - CRITICAL: Both ECC and SIFT failed (SIFT took " << fixed << setprecision(2) << double(clock() - tSIFT) / CLOCKS_PER_SEC << "s)" << endl;
 					}
 				}
 
@@ -1409,16 +1411,16 @@ int main(int argc, char** argv) {
 				} else {
 					H_total = H_meta_ref; // Fallback to metadata only
 				}
-				gLog << "      - Step C Total: " << fixed << setprecision(2) << double(clock() - startC) / CLOCKS_PER_SEC << "s" << endl;
+				ss << "      - Step C Total: " << fixed << setprecision(2) << double(clock() - startC) / CLOCKS_PER_SEC << "s" << endl;
 			}
 
-			gLog << "    H_total: " << H_total << endl;
-			gLog << "    Saving " << info.filename << "..." << endl;
+			ss << "    H_total: " << H_total << endl;
+			ss << "    Saving " << info.filename << "..." << endl;
 
 			clock_t tFinalWarp = clock();
 			warpPerspective(dewarped, finalImg, H_total, finalSize, INTER_LINEAR | WARP_INVERSE_MAP);
 			imwrite(calibDir + "/" + info.filename, finalImg);
-			gLog << "      - Final warp & save: " << fixed << setprecision(2) << double(clock() - tFinalWarp) / CLOCKS_PER_SEC << "s" << endl;
+			ss << "      - Final warp & save: " << fixed << setprecision(2) << double(clock() - tFinalWarp) / CLOCKS_PER_SEC << "s" << endl;
 
 			// Save radiometric calibrated image if radio is enabled
 			if (doRadio && data.coeffs.valid) {
@@ -1427,7 +1429,7 @@ int main(int argc, char** argv) {
 				radioImg = undistortImg(radioImg, info);
 				warpPerspective(radioImg, radioImg, H_total, finalSize, INTER_LINEAR | WARP_INVERSE_MAP);
 				imwrite(radioDir + "/" + info.filename, radioImg);
-				gLog << "      - Radiometric processing: " << fixed << setprecision(2) << double(clock() - tRadio) / CLOCKS_PER_SEC << "s" << endl;
+				ss << "      - Radiometric processing: " << fixed << setprecision(2) << double(clock() - tRadio) / CLOCKS_PER_SEC << "s" << endl;
 			}
 
 			// Identify bands for NDVI (last char of stem, e.g. DJI_0223.TIF -> 2=Green, 3=Red, 5=NIR, 0=RGB)
@@ -1435,9 +1437,13 @@ int main(int argc, char** argv) {
 			if (!stem.empty()) {
 				int band = stem.back() - '0';
 				if (band == 0 || band == 2 || band == 3 || band == 5) {
-					alignedBands[band] = finalImg.clone();
+					#pragma omp critical
+					{
+						alignedBands[band] = finalImg.clone();
+					}
 				}
 			}
+			gLog << ss.str();
 		}
 
 		// Calculate and save NDVI
