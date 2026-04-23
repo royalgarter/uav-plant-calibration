@@ -938,8 +938,8 @@ Mat calculateNDVI(const Mat& red, const Mat& nir, const Mat& green_spectral_band
 		// These values might need fine-tuning based on actual image data
 		// Lower_green = [40, 50, 50]
 		// Upper_green = [80, 255, 255]
-		Scalar lower_green = Scalar(40, 50, 50);
-		Scalar upper_green = Scalar(80, 255, 255);
+		Scalar lower_green = Scalar(40, 40, 40);
+		Scalar upper_green = Scalar(90, 255, 255);
 
 		// Threshold the HSV image to get only green colors
 		Mat green_mask;
@@ -1423,11 +1423,11 @@ int main(int argc, char** argv) {
 				gLog << "      - Radiometric processing: " << fixed << setprecision(2) << double(clock() - tRadio) / CLOCKS_PER_SEC << "s" << endl;
 			}
 
-			// Identify bands for NDVI (last char of stem, e.g. DJI_0223.TIF -> 2=Green, 3=Red, 5=NIR)
+			// Identify bands for NDVI (last char of stem, e.g. DJI_0223.TIF -> 2=Green, 3=Red, 5=NIR, 0=RGB)
 			string stem = path(info.path).stem().string();
 			if (!stem.empty()) {
 				int band = stem.back() - '0';
-				if (band == 2 || band == 3 || band == 5) {
+				if (band == 0 || band == 2 || band == 3 || band == 5) {
 					alignedBands[band] = finalImg.clone();
 				}
 			}
