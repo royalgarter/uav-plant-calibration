@@ -6,7 +6,7 @@ CW_FLAGS="-Wall -Wextra -pedantic"
 
 LIBS="-lstdc++"
 WINLIBS="-ltiff -Ilibtiff -Ilibtiff/include -Llibtiff/lib -Ic:/opencv -Ic:/opencv/include -Lc:/opencv/x64/mingw/lib/ -lopencv_core455 -lopencv_calib3d455 -lopencv_imgcodecs455 -lopencv_imgproc455 -lopencv_video455 -lopencv_highgui455 -lopencv_features2d455"
-RAYLIB="-Iraylib/include -Lraylib/lib -lraylib -lgdi32 -lopengl32 -lcomctl32 -lwinmm"
+RAYLIB="-Iraylib/include -Lraylib/lib -lraylib -lopengl32 -lgdi32 -lwinmm -lcomdlg32 -lcomctl32 -lole32 -lshell32"
 WINGUI="-DWINGUI -lgdi32 -lcomdlg32 -lole32 -lshell32"
 
 if [[ "$1" == *"win"* ]]; then
@@ -29,10 +29,7 @@ case "$1" in
         run_cmd $CC $CFLAGS src/calib.cc -o calib -ltiff $(pkg-config --cflags --libs opencv4) $LIBS
         ;;
     "build:calib-win")
-        run_cmd $CC $CFLAGS src/calib.cc -o window_build/calib.exe $LIBS $WINLIBS
-        ;;
-    "build:calib-win-gui")
-        run_cmd $CC $CFLAGS src/calib.cc -o window_build/calib-gui.exe $LIBS $WINLIBS $RAYLIB $WINGUI
+        run_cmd $CC $CFLAGS src/calib.cc -o window_build/calib-wingui.exe $LIBS $WINLIBS $RAYLIB $WINGUI
         ;;
     
     ###############################################################################################
@@ -50,16 +47,16 @@ case "$1" in
     ###############################################################################################
 
     "example:calib-win")
-        run_cmd ./window_build/calib.exe ./.input/ ./.output/ --optimize
-        ;;
-    "example:calib-win-gui")
-        run_cmd ./window_build/calib-gui.exe --gui
+        run_cmd ./window_build/calib-wingui.exe ./.input/ ./.output/ --optimize
         ;;
     "example:calib-win-radio")
-        run_cmd ./window_build/calib.exe ./.input/ ./.output/ --optimize --radio 0,25
+        run_cmd ./window_build/calib-wingui.exe ./.input/ ./.output/ --optimize --radio 0,25
         ;;
     "example:calib-win-auto")
-        run_cmd ./window_build/calib.exe ./.input/ ./.output/ --optimize --radio 0,25 --auto 10
+        run_cmd ./window_build/calib-wingui.exe ./.input/ ./.output/ --optimize --radio 0,25 --auto 10
+        ;;
+    "example:calib-win-gui")
+        run_cmd ./window_build/calib-wingui.exe --gui --optimize
         ;;
     
     ############################################################################################### 

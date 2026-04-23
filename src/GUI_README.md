@@ -54,12 +54,7 @@ Detailed integration guide for future reference
 ### Windows (with GUI support)
 
 ```bash
-g++ -std=c++17 -o calib.exe src/calib.cc \
-    -lopencv_core -lopencv_calib3d -lopencv_imgcodecs \
-    -lopencv_imgproc -lopencv_video -lopencv_highgui \
-    -ltiff
-
-g++ -std=c++17 -o calib-gui.exe src/calib.cc -DWINGUI \
+g++ -std=c++17 -o calib-wingui.exe src/calib.cc -DWINGUI \
     -lopencv_core -lopencv_calib3d -lopencv_imgcodecs \
     -lopencv_imgproc -lopencv_video -lopencv_highgui \
     -ltiff -lraylib -lopengl32 -lgdi32 -lwinmm -lcomdlg32 -lole32 -lshell32
@@ -72,40 +67,13 @@ g++ -std=c++17 -o calib src/calib.cc \
     `pkg-config --cflags --libs opencv4` -ltiff
 ```
 
-### Using CMake (Recommended for cross-platform)
-
-```cmake
-cmake_minimum_required(VERSION 3.10)
-project(uav-plant-calibration)
-
-set(CMAKE_CXX_STANDARD 17)
-
-find_package(OpenCV REQUIRED)
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(TIFF REQUIRED libtiff-4)
-
-# CLI version (Linux/Windows)
-add_executable(calib src/calib.cc)
-target_link_libraries(calib ${OpenCV_LIBS} ${TIFF_LIBRARIES})
-target_include_directories(calib PRIVATE ${OpenCV_INCLUDE_DIRS} ${TIFF_INCLUDE_DIRS})
-
-# Windows GUI version
-if(WIN32)
-    add_executable(calib-gui src/calib.cc)
-    target_compile_definitions(calib-gui PRIVATE WINGUI UNICODE _UNICODE)
-    target_link_libraries(calib-gui ${OpenCV_LIBS} ${TIFF_LIBRARIES}
-                          raylib opengl32 gdi32 winmm comdlg32 ole32 shell32)
-    target_include_directories(calib-gui PRIVATE ${OpenCV_INCLUDE_DIRS} ${TIFF_INCLUDE_DIRS})
-endif()
-```
-
 ## Usage
 
 ### Windows GUI Mode
 
 ```bash
 # Launch the GUI
-calib.exe --gui
+calib-wingui.exe --gui
 ```
 
 The GUI window will open allowing you to:
