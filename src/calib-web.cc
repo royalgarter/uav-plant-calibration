@@ -9,6 +9,8 @@
 #include <vector>
 #include <iostream>
 #include <sstream>
+#include <filesystem>
+namespace fs = std::filesystem;
 
 #ifdef _WIN32
 #include <direct.h>
@@ -33,35 +35,36 @@ void handle_list(struct mg_connection *c, struct mg_http_message *hm) {
     
     if (dir_query.len > 0) {
         char decoded[512];
-        mg_url_decode(dir_query.buf, dir_query.len, decoded, sizeof(decoded), 0);
-        dir_param = decoded;
-    }
-
-    DIR *d = opendir(dir_param.c_str());
-    if (!d) {
-        mg_http_reply(c, 200, "Content-Type: application/json\r\n", "[]");
-        return;
+        // FIX 1: mg_url_decode does NOT null-terminate. We must do it manually.
+        int len = mg_url_decode(dir_query.buf, dir_query.len, decoded, sizeof(decoded) - 1, 0);
+        if (len >= 0) {
+            decoded[len] = '\0';
+            dir_param = decoded;
+        }
     }
 
     cJSON *root = cJSON_CreateArray();
-    struct dirent *dir;
-    while ((dir = readdir(d)) != NULL) {
-        if (strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0) continue;
-        
-        cJSON *item = cJSON_CreateObject();
-        cJSON_AddStringToObject(item, "name", dir->d_name);
-        
-        std::string full_path = dir_param + "/" + dir->d_name;
-        struct stat st;
-        stat(full_path.c_str(), &st);
-        cJSON_AddBoolToObject(item, "isDirectory", S_ISDIR(st.st_mode));
-        
-        const char *ext = strrchr(dir->d_name, '.');
-        cJSON_AddStringToObject(item, "ext", ext ? ext : "");
-        
-        cJSON_AddItemToArray(root, item);
+
+    try {
+        if (fs::exists(dir_param) && fs::is_directory(dir_param)) {
+            for (const auto& entry : fs::directory_iterator(dir_param)) {
+                // Get filename as UTF-8 string
+                std::string filename = entry.path().filename().string();
+                
+                cJSON *item = cJSON_CreateObject();
+                cJSON_AddStringToObject(item, "name", filename.c_str());
+                cJSON_AddBoolToObject(item, "isDirectory", entry.is_directory());
+                
+                // Get extension
+                std::string ext = entry.path().extension().string();
+                cJSON_AddStringToObject(item, "ext", ext.c_str());
+                
+                cJSON_AddItemToArray(root, item);
+            }
+        }
+    } catch (const std::exception& e) {
+        printf("FS Error: %s\n", e.what());
     }
-    closedir(d);
 
     char *json_str = cJSON_Print(root);
     mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s", json_str);
@@ -148,12 +151,16 @@ void handle_run(struct mg_connection *c, struct mg_http_message *hm) {
 static void ev_handler(struct mg_connection *c, int ev, void *ev_data) {
     if (ev == MG_EV_HTTP_MSG) {
         struct mg_http_message *hm = (struct mg_http_message *) ev_data;
+        
         if (match_uri(hm->uri, "/run")) {
             handle_run(c, hm);
         } else if (match_uri(hm->uri, "/list")) {
             handle_list(c, hm);
         } else {
             struct mg_http_serve_opts opts = {0};
+            // Set Cache-Control for 1 hour (3600 seconds)
+            opts.extra_headers = "Cache-Control: public, max-age=3600\r\n";
+            
             char path[512];
             mg_snprintf(path, sizeof(path), "%s/%.*s", s_root_dir, (int) hm->uri.len, hm->uri.buf);
             
@@ -162,6 +169,7 @@ static void ev_handler(struct mg_connection *c, int ev, void *ev_data) {
                 opts.root_dir = s_root_dir;
                 mg_http_serve_dir(c, hm, &opts);
             } else {
+                // If serving from current directory, we still apply the cache header
                 opts.root_dir = ".";
                 mg_http_serve_dir(c, hm, &opts);
             }
