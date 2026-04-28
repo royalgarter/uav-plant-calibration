@@ -31,6 +31,14 @@ case "$1" in
         ./run.sh build:calib;
         ./run.sh build:calib-win;
         ./run.sh build:calib-win-gui;
+        ./run.sh build:calib-webui;
+        ./run.sh build:calib-webui-win;
+        ;;
+    "build:calib-webui")
+        run_cmd $CC $CFLAGS src/calib-web.cc src/mongoose.c src/cJSON.c -o calib-web $LIBS
+        ;;
+    "build:calib-webui-win")
+        run_cmd $CC $CFLAGS src/calib-web.cc src/mongoose.c src/cJSON.c -o window_build/calib-web.exe $LIBS -lws2_32
         ;;
     "build:calib")
         run_cmd $CC $CFLAGS src/calib.cc -o calib $LIBS -ltiff $(pkg-config --cflags --libs opencv4)
@@ -99,10 +107,10 @@ case "$1" in
     ###############################################################################################
     
     "release:zip")
-        run_cmd zip -r release_$(date +'%Y%m%d_%H%M').zip calib-window.bat calib-window-gui.bat window_build/ 
+        run_cmd zip -r release_$(date +'%Y%m%d_%H%M').zip calib-window.bat calib-window-gui.bat window_build/ .input_ref/ webui/ package.json
         ;;
     "release:win")
-        run_cmd Compress-Archive -Path calib-window.bat, calib-window-gui.bat, window_build/ -DestinationPath release_$(date +'%Y%m%d_%H%M').zip -Force -Verbose
+        run_cmd Compress-Archive -Path calib-window.bat, calib-window-gui.bat, window_build/, .input_ref/, webui/, package.json -DestinationPath release_$(date +'%Y%m%d_%H%M').zip -Force -Verbose
         ;;
     
     ###############################################################################################        
