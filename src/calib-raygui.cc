@@ -126,7 +126,7 @@ bool runCalibGui(string& inputFolder, string& outputFolder, string& radioRefFile
         ClearBackground(GetColor(GuiGetStyle(DEFAULT, BACKGROUND_COLOR)));
 
         // Draw GUI
-        if (GuiWindowBox((Rectangle){ 0, 0, (float)screenWidth, (float)screenHeight }, "")) {
+        if (GuiWindowBox((Rectangle){ 0, 0, (float)screenWidth, (float)screenHeight }, "Input Parameters")) {
             cancelled = true;
         }
 

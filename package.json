@@ -3,6 +3,7 @@
   "version": "0.1.3",
   "description": "A opencv uav camera calib.",
   "scripts": {
+    "start": "node webui/server.js"
   },
   "author": "royalgarter <royalgarter@gmail.com>, Sigoden Huang <sigoden@gmail.com> (https://sigoden.com/)",
   "license": "MIT",

@@ -723,8 +723,6 @@ RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point i
 		coeffs.dns = dns_r;
 	}
 
-	imshow(winName, display);
-	waitKey(500);
 	
 	// Save the image with markers for later review when auto-detect was used
 	if (autoDetectThickness >= 0) {
@@ -736,7 +734,9 @@ RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point i
 		gLog << "  Board preview saved to: " << savePath << endl;
 	}
 	
-	destroyWindow(winName);
+	// imshow(winName, display);
+	// waitKey(500);
+	// destroyWindow(winName);
 
 	// Helper lambda for regression
 	auto solveCoeffs = [](const vector<double>& dns, const vector<double>& tgts) -> pair<double, double> {
@@ -945,12 +945,6 @@ Mat calculateNDVI(const Mat& red, const Mat& nir, const Mat& green_spectral_band
 		Mat green_mask;
 		inRange(hsv, lower_green, upper_green, green_mask);
 
-		if (!ndvi_output_dir.empty()) {
-			imwrite(ndvi_output_dir + "/" + debug_prefix + "green_mask.tif", green_mask);
-		} else {
-			imwrite(debug_prefix + "green_mask.tif", green_mask);
-		}
-
 		// Mask out non-green areas (set to 0) in the NDVI image
 		// Ensure the green_mask is of the same size as ndvi
 		if (ndvi.size() == green_mask.size()) {
@@ -959,6 +953,13 @@ Mat calculateNDVI(const Mat& red, const Mat& nir, const Mat& green_spectral_band
 			// If sizes don't match, we might need to resize or handle error
 			// For now, print a warning. In a real scenario, proper resizing or error handling would be needed.
 			cerr << "Warning: RGB image mask size does not match NDVI image size. Green zone masking skipped." << endl;
+		}
+
+		green_mask.convertTo(green_mask, CV_8U);
+		if (!ndvi_output_dir.empty()) {
+			imwrite(ndvi_output_dir + "/" + debug_prefix + "green_mask.jpg", green_mask);
+		} else {
+			imwrite(debug_prefix + "green_mask.jpg", green_mask);
 		}
 	}
 
@@ -976,7 +977,6 @@ void showUsage() {
 	cout << "                Default: --optimize 2,50,1e-4" << endl;
 #ifdef WINGUI
 	cout << "  --gui         Launch Windows GUI interface." << endl;
-	cout << "  --cli         Launch Command-Line interface." << endl;
 #endif
 	cout << "" << endl;
 	cout << "---" << endl;
@@ -1007,9 +1007,11 @@ int main(int argc, char** argv) {
 	Point radioInterval(40, 0);
 
 	// Check for GUI flag first
+	gLog << "argv[1]: " << argv[1] << endl;
+
 	#ifdef WINGUI
 	bool useGui = true;
-	if (argc > 1 && string(argv[1]) == "--cli") {
+	if (argc > 2) {
 		useGui = false;
 	}
 	#else
@@ -1019,9 +1021,11 @@ int main(int argc, char** argv) {
 	}
 	#endif
 
+	gLog << "useGui: " << useGui << endl;
+
 	if (useGui) {
 		#ifdef WINGUI
-		cout << "Launching GUI..." << endl;
+		gLog << "Launching GUI..." << endl;
 		
 		bool guiTwoPointClick = false;
 		bool guiAutoDetect = false;
@@ -1030,7 +1034,7 @@ int main(int argc, char** argv) {
 
 		gConfig.ecc.enabled = true; // Enabled by default in CLI
 		if (!runCalibGui(inDir, outDir, radioRefFile, doRadio, guiTwoPointClick, guiAutoDetect, guiBoardThickness, guiTemplatePath)) {
-			cout << "GUI cancelled or exited." << endl;
+			gLog << "GUI cancelled or exited." << endl;
 			return 0;
 		}
 		
@@ -1043,17 +1047,17 @@ int main(int argc, char** argv) {
 		}
 		radioTemplatePath = guiTemplatePath;
 		
-		cout << "GUI Configuration:" << endl;
-		cout << "  Input Folder: " << inDir << endl;
-		cout << "  Output Folder: " << outDir << endl;
-		cout << "  Radiometric Ref: " << radioRefFile << endl;
-		cout << "  Radiometric Template: " << radioTemplatePath << endl;
-		cout << "  Radiometric Calibration: " << (doRadio ? "ENABLED" : "disabled") << endl;
-		cout << "  Auto-Detect Board: " << (guiAutoDetect ? "ENABLED" : "disabled") << endl;
+		gLog << "GUI Configuration:" << endl;
+		gLog << "  Input Folder: " << inDir << endl;
+		gLog << "  Output Folder: " << outDir << endl;
+		gLog << "  Radiometric Ref: " << radioRefFile << endl;
+		gLog << "  Radiometric Template: " << radioTemplatePath << endl;
+		gLog << "  Radiometric Calibration: " << (doRadio ? "ENABLED" : "disabled") << endl;
+		gLog << "  Auto-Detect Board: " << (guiAutoDetect ? "ENABLED" : "disabled") << endl;
 		if (guiAutoDetect) {
-			cout << "  Board Thickness: " << autoRadioThickness << endl;
+			gLog << "  Board Thickness: " << autoRadioThickness << endl;
 		}
-		cout << endl;
+		gLog << endl;
 		
 		#else
 		cerr << "Error: GUI support not compiled. Define WINGUI and compile with MinGW-w64." << endl;
@@ -1417,9 +1421,14 @@ int main(int argc, char** argv) {
 			ss << "    H_total: " << H_total << endl;
 			ss << "    Saving " << info.filename << "..." << endl;
 
+			Mat tmpImg;
+
 			clock_t tFinalWarp = clock();
 			warpPerspective(dewarped, finalImg, H_total, finalSize, INTER_LINEAR | WARP_INVERSE_MAP);
-			imwrite(calibDir + "/" + info.filename, finalImg);
+
+			tmpImg = contrastStretch(finalImg);
+			imwrite(calibDir + "/" + info.filename + ".jpg", tmpImg);
+
 			ss << "      - Final warp & save: " << fixed << setprecision(2) << double(clock() - tFinalWarp) / CLOCKS_PER_SEC << "s" << endl;
 
 			// Save radiometric calibrated image if radio is enabled
@@ -1428,7 +1437,12 @@ int main(int argc, char** argv) {
 				Mat radioImg = applyRadiometricCalibration(raw, data.coeffs);
 				radioImg = undistortImg(radioImg, info);
 				warpPerspective(radioImg, radioImg, H_total, finalSize, INTER_LINEAR | WARP_INVERSE_MAP);
-				imwrite(radioDir + "/" + info.filename, radioImg);
+
+				tmpImg = contrastStretch(radioImg);
+				imwrite(radioDir + "/" + info.filename + ".jpg", tmpImg);
+
+				finalImg = radioImg.clone();
+
 				ss << "      - Radiometric processing: " << fixed << setprecision(2) << double(clock() - tRadio) / CLOCKS_PER_SEC << "s" << endl;
 			}
 
@@ -1436,7 +1450,7 @@ int main(int argc, char** argv) {
 			string stem = path(info.path).stem().string();
 			if (!stem.empty()) {
 				int band = stem.back() - '0';
-				if (band == 0 || band == 2 || band == 3 || band == 5) {
+				if (band == 0 || band == 1 || band == 2 || band == 3 || band == 4 || band == 5) {
 					#pragma omp critical
 					{
 						alignedBands[band] = finalImg.clone();
@@ -1454,20 +1468,25 @@ int main(int argc, char** argv) {
 			Mat ndvi = calculateNDVI(alignedBands[3], alignedBands[5], alignedBands[2], alignedBands[0], ndviDir, prefix);
 
 			// Save raw float NDVI
-			imwrite(ndviDir + "/" + prefix + "NDVI_raw.tif", ndvi);
+			imwrite(ndviDir + "/" + prefix + "ndvi_raw.tif", ndvi);
 
 			// Save colorized NDVI
 			Mat ndvi_u8 = contrastStretch(ndvi);
+			imwrite(ndviDir + "/" + prefix + "ndvi_u8.jpg", ndvi_u8);
+
 			Mat ndvi_color;
 			applyColorMap(ndvi_u8, ndvi_color, COLORMAP_JET);
-			imwrite(ndviDir + "/" + prefix + "NDVI_color.jpg", ndvi_color);
-			gLog << "    NDVI saved to " << prefix + "NDVI_raw.tif and " << prefix + "NDVI_color.jpg" << endl;
+			imwrite(ndviDir + "/" + prefix + "ndvi_color.jpg", ndvi_color);
+
+			gLog << "    NDVI saved to " << prefix + "ndvi_raw.tif and " << prefix + "ndvi_color.jpg" << endl;
 			gLog << "    Step D Total: " << fixed << setprecision(2) << double(clock() - startD) / CLOCKS_PER_SEC << "s" << endl;
 		}
 	}
 
-	cout << "Press ENTER to exit..." << endl;
-	cin.get();
+	if (useGui) {
+		cout << "Press ENTER to exit..." << endl;
+		cin.get();
+	}
 
 	return 0;
 }
