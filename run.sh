@@ -9,14 +9,17 @@ TIFFLIB="-ltiff -Ilibtiff -Ilibtiff/include -Llibtiff/lib"
 OPENCVLIB="-Ic:/opencv -Ic:/opencv/include -Lc:/opencv/x64/mingw/lib/ -lopencv_core455 -lopencv_calib3d455 -lopencv_imgcodecs455 -lopencv_imgproc455 -lopencv_video455 -lopencv_highgui455 -lopencv_features2d455"
 RAYLIB="-Iraylib/include -Lraylib/lib -lraylib"
 WINGUILIB="-DWINGUI -lopengl32 -lgdi32 -lwinmm -lcomdlg32 -lcomctl32 -lole32 -lshell32 -luuid"
+RELEASE_FILES="calib-web-gui.bat calib-window-gui.bat window_build/ .input_ref/ webui/ package.json"
+RELEASE_FILES_WIN=${RELEASE_FILES// /\,}
+RELEASE_TIME="$(date +'%Y%m%d_%H%M')"
 
+echo ""
 if [[ "$1" == *"win"* ]]; then
     echo "OS: window"
     PS_CMD="powershell.exe -Command"
 else
     echo "OS: linux"
     PS_CMD=""
-    
 fi
 
 run_cmd() {
@@ -34,19 +37,27 @@ case "$1" in
         ./run.sh build:calib-webui;
         ./run.sh build:calib-webui-win;
         ;;
-    "build:calib-webui")
-        run_cmd $CC $CFLAGS src/calib-web.cc src/mongoose.c src/cJSON.c -o calib-web $LIBS
-        ;;
-    "build:calib-webui-win")
-        run_cmd $CC $CFLAGS src/calib-web.cc src/mongoose.c src/cJSON.c -o window_build/calib-web.exe $LIBS -lws2_32
-        ;;
+
+    ###############################################################################################
+
     "build:calib")
         run_cmd $CC $CFLAGS src/calib.cc -o calib $LIBS -ltiff $(pkg-config --cflags --libs opencv4)
         find . -type f -name "calib" -executable
         ;;
+    "build:calib-webui")
+        run_cmd $CC $CFLAGS src/calib-web.cc src/mongoose.c src/cJSON.c -o calib-web $LIBS
+        find . -type f -name "calib-web" -executable
+        ;;
+    
+    ###############################################################################################        
+
     "build:calib-win")
         run_cmd $CC $CFLAGS src/calib.cc -o window_build/calib.exe $LIBS $TIFFLIB $OPENCVLIB
         find . -type f -name "calib.exe"
+        ;;
+    "build:calib-webui-win")
+        run_cmd $CC $CFLAGS src/calib-web.cc src/mongoose.c src/cJSON.c -o window_build/calib-web.exe $LIBS -lws2_32
+        find . -type f -name "calib-web.exe"
         ;;
     "build:calib-win-gui")
         run_cmd $CC $CFLAGS src/calib.cc -o window_build/calib-wingui.exe $LIBS $TIFFLIB $OPENCVLIB $RAYLIB $WINGUILIB
@@ -107,10 +118,16 @@ case "$1" in
     ###############################################################################################
     
     "release:zip")
-        run_cmd zip -r release_$(date +'%Y%m%d_%H%M').zip calib-window.bat calib-window-gui.bat window_build/ .input_ref/ webui/ package.json
+        run_cmd zip -r release_$RELEASE_TIME.zip $RELEASE_FILES
+        rm -rf .tmp
+            mkdir -p .tmp/.input .tmp/.output
+            pushd .tmp
+            zip -r ../release_$RELEASE_TIME.zip .input .output
+            popd
+        rm -rf .tmp
         ;;
     "release:win")
-        run_cmd Compress-Archive -Path calib-window.bat, calib-window-gui.bat, window_build/, .input_ref/, webui/, package.json -DestinationPath release_$(date +'%Y%m%d_%H%M').zip -Force -Verbose
+        run_cmd Compress-Archive -Path $RELEASE_FILES_WIN -DestinationPath release_$RELEASE_TIME.zip -Force -Verbose
         ;;
     
     ###############################################################################################        
