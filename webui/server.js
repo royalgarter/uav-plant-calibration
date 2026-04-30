@@ -32,9 +32,9 @@ const server = http.createServer((req, res) => {
 			try {
 				const config = JSON.parse(body);
 				executeCalibration(config, res);
-			} catch (err) {
+			} catch (error) {
 				res.writeHead(400, { 'Content-Type': 'application/json' });
-				res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+				res.end(JSON.stringify({ error: error.toString() }));
 			}
 		});
 		return;
@@ -133,17 +133,14 @@ function executeCalibration(config, res) {
 		args.push('--optimize');
 	}
 
-	console.log('Executing command:', './calib', args.join(' '));
+	const executable = process.platform.includes('win') ? 'window_build\\calib.exe' : './calib';
 
-	fs.rm(path.join(process.cwd(), outDir), { recursive: true, force: true }, console.log);
+	console.log('Executing command:', executable, args.join(' '));
 
-	// For Linux/macOS, we assume ./calib is built
-	// For Windows, it might be ./calib.exe or similar
-	const executable = process.platform === 'win32' ? 'calib.exe' : './calib';
+	fs.rmdir(path.join(process.cwd(), outDir), { recursive: true, force: true }, console.log);
 
-	// Determine the actual path to the executable
 	let exePath = path.join(process.cwd(), executable);
-	if (!fs.existsSync(exePath) && process.platform !== 'win32') {
+	if (!fs.existsSync(exePath) && !process.platform.includes('win')) {
 		// Try without ./ if it fails
 		exePath = 'calib';
 	}
