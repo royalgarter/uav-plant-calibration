@@ -1,0 +1,4 @@
+{
+	"main": "webui/server.js",
+	"output": "window_build/calib-server.blob"
+}

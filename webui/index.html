@@ -263,7 +263,7 @@
 						if (result.error) {
 							this.logs += `\nFAILED: ${result.error}`;
 						} else {
-							this.logs += `\nProcess exited with code ${result.code}`;
+							this.logs += `\nProcess finished with: ${result.code == 0 ? '[SUCCESS]': `code [${result.code}]`}`;
 							this.fetchOutputFiles();
 						}
 					} catch (err) {

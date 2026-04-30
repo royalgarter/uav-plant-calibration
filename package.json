@@ -3,6 +3,8 @@
   "version": "0.1.3",
   "description": "A opencv uav camera calib.",
   "scripts": {
+    "build:exe": "npx postject window_build/node.exe NODE_SEA_BLOB window_build/calib-server.blob --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2 --macho-segment-name NODE_SEA",
+    "build:blob": "node --experimental-sea-config webui/sea-config.json",
     "start": "node webui/server.js"
   },
   "author": "royalgarter <royalgarter@gmail.com>, Sigoden Huang <sigoden@gmail.com> (https://sigoden.com/)",
