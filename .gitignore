@@ -46,3 +46,4 @@ output.png
 /example/calib/output/radiometric_report.csv
 /raylib
 /window_build/.output
+/runtime/settings
