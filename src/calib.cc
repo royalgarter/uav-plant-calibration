@@ -908,66 +908,129 @@ Mat contrastStretch(const Mat& src) {
 	return dst;
 }
 
-Mat calculateNDVI(const Mat& red, const Mat& nir, const Mat& green_spectral_band = Mat(), const Mat& rgb_image = Mat(), const std::string& ndvi_output_dir = "", const std::string& debug_prefix = "") {
-	Mat r_float, n_float;
-	red.convertTo(r_float, CV_32F);
-	nir.convertTo(n_float, CV_32F);
-
-	Mat ndvi_top = n_float - r_float;
-	Mat ndvi_bottom = n_float + r_float;
+Mat calculateVegIndex(const string& type, const map<int, Mat>& bands) {
+	Mat nir, red, green, blue, re;
 	
-	// Avoid division by zero
-	Mat mask = (ndvi_bottom == 0);
-	ndvi_bottom.setTo(0.00001f, mask);
-
-	Mat ndvi = ndvi_top / ndvi_bottom;
+	// Band mapping (standard P4M: 1=B, 2=G, 3=R, 4=RE, 5=NIR)
+	// Fallback for Mavic 3M: 1=G, 2=R, 3=RE, 4=NIR
 	
-	// Clip to [0, 1] as per python script reference
-	threshold(ndvi, ndvi, 0, 0, THRESH_TOZERO);
-	threshold(ndvi, ndvi, 1, 1, THRESH_TRUNC);
+	if (bands.count(5)) bands.at(5).convertTo(nir, CV_32F);
+	else if (bands.count(4)) bands.at(4).convertTo(nir, CV_32F); // Fallback for Mavic 3M or others
 	
-	gLog << "    ndvi_output_dir: " << ndvi_output_dir << endl;
-	if (!rgb_image.empty()) {
-		gLog << "    !rgb_image.empty" << endl;
+	if (bands.count(3)) bands.at(3).convertTo(red, CV_32F);
+	else if (bands.count(2) && !bands.count(3)) bands.at(2).convertTo(red, CV_32F); // Fallback Red=2 if 3 is missing
+	
+	if (bands.count(2)) bands.at(2).convertTo(green, CV_32F);
+	else if (bands.count(1) && !bands.count(2)) bands.at(1).convertTo(green, CV_32F); // Fallback Green=1
+	
+	if (bands.count(1)) bands.at(1).convertTo(blue, CV_32F);
+	
+	if (bands.count(4)) bands.at(4).convertTo(re, CV_32F);
+	else if (bands.count(3) && !bands.count(4)) bands.at(3).convertTo(re, CV_32F); // Fallback RE=3
 
-		// Convert BGR to HSV
-		Mat hsv;
-		cvtColor(rgb_image, hsv, COLOR_BGR2HSV);
+	Mat result;
 
-		// Define range of green color in HSV (similar to green_zone_detection.py)
-		// These values might need fine-tuning based on actual image data
-		// Lower_green = [40, 50, 50]
-		// Upper_green = [80, 255, 255]
-		Scalar lower_green = Scalar(40, 40, 40);
-		Scalar upper_green = Scalar(90, 255, 255);
+	gLog << "  calculateVegIndex.type: " << type << bands.count(5) << ", " << bands.count(3) << ", " << nir.empty() << ", " << red.empty() << endl;
 
-		// Threshold the HSV image to get only green colors
-		Mat green_mask;
-		inRange(hsv, lower_green, upper_green, green_mask);
-
-		// Mask out non-green areas (set to 0) in the NDVI image
-		// Ensure the green_mask is of the same size as ndvi
-		if (ndvi.size() == green_mask.size()) {
-			ndvi.setTo(0, green_mask == 0);
-		} else {
-			// If sizes don't match, we might need to resize or handle error
-			// For now, print a warning. In a real scenario, proper resizing or error handling would be needed.
-			cerr << "Warning: RGB image mask size does not match NDVI image size. Green zone masking skipped." << endl;
-		}
-
-		green_mask.convertTo(green_mask, CV_8U);
-		if (!ndvi_output_dir.empty()) {
-			imwrite(ndvi_output_dir + "/" + debug_prefix + "green_mask.jpg", green_mask);
-		} else {
-			imwrite(debug_prefix + "green_mask.jpg", green_mask);
-		}
+	if (type == "ndvi") {
+		if (nir.empty() || red.empty()) return Mat();
+		result = (nir - red) / (nir + red + 1e-6f);
+	} else if (type == "evi") {
+		if (nir.empty() || red.empty() || blue.empty()) return Mat();
+		// EVI = 2.5 * (NIR - RED) / (NIR + 6*RED - 7.5*BLUE + 1)
+		result = 2.5f * (nir - red) / (nir + 6.0f * red - 7.5f * blue + 1.0f);
+	} else if (type == "gndvi") {
+		if (nir.empty() || green.empty()) return Mat();
+		result = (nir - green) / (nir + green + 1e-6f);
+	} else if (type == "ndre") {
+		if (nir.empty() || re.empty()) return Mat();
+		result = (nir - re) / (nir + re + 1e-6f);
+	} else if (type == "rdvi") {
+		if (nir.empty() || red.empty()) return Mat();
+		Mat sum_val = nir + red;
+		sqrt(sum_val, sum_val);
+		result = (nir - red) / (sum_val + 1e-6f);
+	} else if (type == "osavi") {
+		if (nir.empty() || red.empty()) return Mat();
+		// OSAVI = 1.16 * (NIR - RED) / (NIR + RED + 0.16)
+		result = 1.16f * (nir - red) / (nir + red + 0.16f);
+	} else if (type == "msr") {
+		if (nir.empty() || red.empty()) return Mat();
+		Mat ratio = nir / (red + 1e-6f);
+		Mat sqrt_ratio;
+		sqrt(ratio, sqrt_ratio);
+		result = (ratio - 1.0f) / (sqrt_ratio + 1.0f + 1e-6f);
 	}
 
-	return ndvi;
+	if (!result.empty()) {
+		gLog << "!result.empty()" << endl;
+		threshold(result, result, 0, 0, THRESH_TOZERO);
+		threshold(result, result, 1, 1, THRESH_TRUNC);
+	}
+	return result;
+}
+
+void applyGreenMask(Mat& indexImg, const Mat& rgbImg, const string& outputDir, const string& prefix, const string& indexName) {
+	if (rgbImg.empty() || indexImg.empty()) return;
+
+	Mat hsv;
+	cvtColor(rgbImg, hsv, COLOR_BGR2HSV);
+
+	Scalar lower_green = Scalar(40, 40, 40);
+	Scalar upper_green = Scalar(90, 255, 255);
+
+	Mat green_mask;
+	inRange(hsv, lower_green, upper_green, green_mask);
+
+	if (indexImg.size() == green_mask.size()) {
+		indexImg.setTo(0, green_mask == 0);
+		
+		// Optional debug: save mask
+		// imwrite(outputDir + "/" + prefix + "_" + indexName + "_green_mask.jpg", green_mask);
+	}
+}
+
+// Export vegetation index averages to CSV
+void exportVegIndexCsv(const string& outPath, const vector<string>& requestedIndices, const map<string, map<string, double>>& averages) {
+	string csvPath = outPath + "/vegetation_index_report.csv";
+	ofstream csv(csvPath);
+
+	if (!csv.is_open()) {
+		gLog << "  ERROR: Could not create CSV file: " << csvPath << endl;
+		return;
+	}
+
+	csv << fixed << setprecision(6);
+
+	// Write header
+	csv << "Group prefix";
+	for (const string& idx : requestedIndices) {
+		string upperIdx = idx;
+		transform(upperIdx.begin(), upperIdx.end(), upperIdx.begin(), ::toupper);
+		csv << "," << upperIdx << "_Avg";
+	}
+	csv << endl;
+
+	// Write data
+	for (const auto& [prefix, indexMap] : averages) {
+		csv << prefix;
+		for (const string& idx : requestedIndices) {
+			auto it = indexMap.find(idx);
+			if (it != indexMap.end()) {
+				csv << "," << it->second;
+			} else {
+				csv << ",0.0";
+			}
+		}
+		csv << endl;
+	}
+
+	csv.close();
+	gLog << "  Vegetation index report exported to: " << csvPath << endl;
 }
 
 void showUsage() {
-	cout << "USAGE: ./calib <src_dir (default: .input/)> <dest_dir (default: .output/)> [--radio] [--auto] [--optimize]" << endl;
+	cout << "USAGE: ./calib <src_dir (default: .input/)> <dest_dir (default: .output/)> [--radio] [--auto] [--optimize] [--veg-idx=...]" << endl;
 	cout << "  --radio       Enable radiometric calibration." << endl;
 	cout << "  --auto        Auto-detect radiometric board (used with --radio). Optional: --auto <border_thickness>" << endl;
 	cout << "  --template    Path to radiometric board template image (default: .input_ref/radiometric_board.jpg)" << endl;
@@ -975,6 +1038,9 @@ void showUsage() {
 	cout << "  --optimize    Enable performance optimizations for ECC alignment." << endl;
 	cout << "                Optional: --optimize <downscale>,<iterations>,<epsilon>" << endl;
 	cout << "                Default: --optimize 2,50,1e-4" << endl;
+	cout << "  --veg-idx     Comma-separated list of vegetation indices to calculate." << endl;
+	cout << "                Supported: ndvi, evi, gndvi, ndre, rdvi, osavi, msr" << endl;
+	cout << "                Default: ndvi" << endl;
 #ifdef WINGUI
 	cout << "  --gui         Launch Windows GUI interface." << endl;
 #endif
@@ -1005,6 +1071,7 @@ int main(int argc, char** argv) {
 	bool doRadio = false;
 	int autoRadioThickness = -1;
 	Point radioInterval(40, 0);
+	vector<string> requestedVegIndices = {"ndvi"};
 
 	// Check for GUI flag first
 	gLog << "argv[1]: " << argv[1] << endl;
@@ -1115,6 +1182,25 @@ int main(int argc, char** argv) {
 					radioRefFile = argv[i+1];
 					i++;
 				}
+			} else if (arg.find("--veg-idx=") == 0) {
+				string list = arg.substr(10);
+				stringstream ss(list);
+				string segment;
+				requestedVegIndices.clear();
+				while(getline(ss, segment, ',')) {
+					transform(segment.begin(), segment.end(), segment.begin(), ::tolower);
+					requestedVegIndices.push_back(segment);
+				}
+			} else if (arg == "--veg-idx" && i + 1 < argc && argv[i+1][0] != '-') {
+				string list = argv[i+1];
+				stringstream ss(list);
+				string segment;
+				requestedVegIndices.clear();
+				while(getline(ss, segment, ',')) {
+					transform(segment.begin(), segment.end(), segment.begin(), ::tolower);
+					requestedVegIndices.push_back(segment);
+				}
+				i++;
 			} else {
 				args.push_back(arg);
 			}
@@ -1135,17 +1221,17 @@ int main(int argc, char** argv) {
 	}
 
 	// Create subdirectories for each processing step
-	string calibDir = outDir + "/calib";
-	string radioDir = outDir + "/radio";
-	string ndviDir = outDir + "/ndvi";
+	string alignDir = outDir + "/alignment";
+	string radioDir = outDir + "/radiometric";
+	string vegidxDir = outDir + "/vegetation_index";
 
-	create_directories(calibDir);
+	create_directories(alignDir);
 	create_directories(radioDir);
-	create_directories(ndviDir);
+	create_directories(vegidxDir);
 
-	gLog << "Calibrated images: " << calibDir << endl;
+	gLog << "Calibrated images: " << alignDir << endl;
 	gLog << "Radiometric images: " << radioDir << endl;
-	gLog << "NDVI images: " << ndviDir << endl;
+	gLog << "NDVI images: " << vegidxDir << endl;
 	gLog << "========================================" << endl;
 	gLog << "UAV Calibration running" << endl;
 	gLog << "Time: " << oss.str().substr(0, 11) << endl;
@@ -1255,6 +1341,8 @@ int main(int argc, char** argv) {
 	for (auto const& [prefix, data] : allGroups) {
 		prefixes.push_back(prefix);
 	}
+
+	map<string, map<string, double>> groupVegAverages;
 
 	gLog << "\n" << endl;
 
@@ -1427,7 +1515,7 @@ int main(int argc, char** argv) {
 			warpPerspective(dewarped, finalImg, H_total, finalSize, INTER_LINEAR | WARP_INVERSE_MAP);
 
 			tmpImg = contrastStretch(finalImg);
-			imwrite(calibDir + "/" + info.filename + ".jpg", tmpImg);
+			imwrite(alignDir + "/" + info.filename + ".jpg", tmpImg);
 
 			ss << "      - Final warp & save: " << fixed << setprecision(2) << double(clock() - tFinalWarp) / CLOCKS_PER_SEC << "s" << endl;
 
@@ -1450,7 +1538,7 @@ int main(int argc, char** argv) {
 			string stem = path(info.path).stem().string();
 			if (!stem.empty()) {
 				int band = stem.back() - '0';
-				if (band == 0 || band == 1 || band == 2 || band == 3 || band == 4 || band == 5) {
+				if (band >= 0 && band <= 9) {
 					#pragma omp critical
 					{
 						alignedBands[band] = finalImg.clone();
@@ -1460,27 +1548,50 @@ int main(int argc, char** argv) {
 			gLog << ss.str();
 		}
 
-		// Calculate and save NDVI
-		if (alignedBands.count(3) && alignedBands.count(5)) {
-			gLog << "\n    Step D: Calculating NDVI for group " << prefix << "..." << endl;
+		// Calculate and save requested vegetation indices
+		for (const string& vegIdx : requestedVegIndices) {
+			gLog << "\n    Step D: Calculating " << vegIdx << " for group " << prefix << "..." << endl;
 			clock_t startD = clock();
 
-			Mat ndvi = calculateNDVI(alignedBands[3], alignedBands[5], alignedBands[2], alignedBands[0], ndviDir, prefix);
+			Mat indexImg = calculateVegIndex(vegIdx, alignedBands);
+			
+			if (indexImg.empty()) {
+				stringstream ssBands;
+				ssBands << "    Warning: Missing bands for " << vegIdx << " calculation. Available bands: ";
+				for (auto const& [b, m] : alignedBands) ssBands << b << " ";
+				gLog << ssBands.str() << endl;
+				continue;
+			}
 
-			// Save raw float NDVI
-			imwrite(ndviDir + "/" + prefix + "ndvi_raw.tif", ndvi);
+			// Apply green mask if RGB image (band 0) is available
+			if (alignedBands.count(0)) {
+				applyGreenMask(indexImg, alignedBands[0], vegidxDir, prefix, vegIdx);
+			}
 
-			// Save colorized NDVI
-			Mat ndvi_u8 = contrastStretch(ndvi);
-			imwrite(ndviDir + "/" + prefix + "ndvi_u8.jpg", ndvi_u8);
+			// Calculate average (excluding 0/masked pixels)
+			Scalar avgVal = mean(indexImg, indexImg > 0);
+			groupVegAverages[prefix][vegIdx] = avgVal[0];
 
-			Mat ndvi_color;
-			applyColorMap(ndvi_u8, ndvi_color, COLORMAP_JET);
-			imwrite(ndviDir + "/" + prefix + "ndvi_color.jpg", ndvi_color);
+			// Save raw float index
+			imwrite(vegidxDir + "/" + prefix + "_" + vegIdx + "_raw.tif", indexImg);
 
-			gLog << "    NDVI saved to " << prefix + "ndvi_raw.tif and " << prefix + "ndvi_color.jpg" << endl;
-			gLog << "    Step D Total: " << fixed << setprecision(2) << double(clock() - startD) / CLOCKS_PER_SEC << "s" << endl;
+			// Save colorized index
+			Mat index_u8 = contrastStretch(indexImg);
+			imwrite(vegidxDir + "/" + prefix + "_" + vegIdx + "_u8.jpg", index_u8);
+
+			Mat index_color;
+			applyColorMap(index_u8, index_color, COLORMAP_JET);
+			imwrite(vegidxDir + "/" + prefix + "_" + vegIdx + "_color.jpg", index_color);
+
+			gLog << "    " << vegIdx << " saved to " << prefix + "_" + vegIdx + "_raw.tif and " << prefix + "_" + vegIdx + "_color.jpg" << endl;
+			gLog << "    Step D (" << vegIdx << ") Total: " << fixed << setprecision(2) << double(clock() - startD) / CLOCKS_PER_SEC << "s" << endl;
 		}
+	}
+
+	// Export vegetation index report
+	if (!requestedVegIndices.empty()) {
+		gLog << "\n--- EXPORTING VEGETATION INDEX CSV ---" << endl;
+		exportVegIndexCsv(outDir, requestedVegIndices, groupVegAverages);
 	}
 
 	if (useGui) {

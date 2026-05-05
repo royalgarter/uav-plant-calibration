@@ -178,9 +178,9 @@
 								<!-- <h2 class="text-lg font-semibold">Processed Images</h2> -->
 								<div class="flex space-x-2">
 									<select x-model="viewDir" @change="fetchOutputFiles()" class="text-sm border-gray-300 p-1 border">
-										<option value="calib">Corelation Aligment</option>
-										<option value="radio">Radiometric Calibration</option>
-										<option value="ndvi">Vegetation Indices</option>
+										<option value="alignment">Corelation Aligment</option>
+										<option value="radiometric">Radiometric Calibration</option>
+										<option value="vegetation_index">Vegetation Indices</option>
 									</select>
 									<button @click="fetchOutputFiles()" class="p-1 hover:bg-gray-100 rounded">
 										<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
@@ -283,21 +283,21 @@
 					autoRadioThickness: 10,
 					optimize: true,
 					calc: {
-						NVDI: true,
-						EVI: false,
-						GNDVI: false,
-						NDRE: false,
-						RDVI: false,
-						OSAVI: false,
-						MSR: false,
-						GCP: false,
+						NDVI: true,
+						EVI: true,
+						GNDVI: true,
+						NDRE: true,
+						RDVI: true,
+						OSAVI: true,
+						MSR: true,
+						// GCP: false,
 					}
 				},
 				running: false,
 				logs: '',
 				files: [],
 				loadingFiles: false,
-				viewDir: 'radio',
+				viewDir: 'vegetation_index',
 				modalOpen: false,
 				modalImage: '',
 				modalTitle: '',
@@ -324,6 +324,11 @@
 					}
 					if (this.config.radioTemplatePath) cmd += ` --template ${this.config.radioTemplatePath}`;
 					if (this.config.optimize) cmd += ' --optimize';
+					
+					const indices = Object.keys(this.config.calc).filter(k => this.config.calc[k]).map(k => k.toLowerCase());
+					if (indices.length > 0) {
+						cmd += ` --veg-idx ${indices.join(',')}`;
+					}
 					return cmd;
 				},
 

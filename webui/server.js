@@ -104,7 +104,8 @@ function executeCalibration(config, res) {
 		autoRadioThickness = -1,
 		radioRefFile = '',
 		radioTemplatePath = '',
-		optimize = false
+		optimize = false,
+		calc = {}
 	} = config;
 
 	// Build arguments list for ./calib
@@ -131,6 +132,12 @@ function executeCalibration(config, res) {
 
 	if (optimize) {
 		args.push('--optimize');
+	}
+
+	// Handle vegetation indices
+	const indices = Object.keys(calc).filter(k => calc[k]).map(k => k.toLowerCase());
+	if (indices.length > 0) {
+		args.push('--veg-idx', indices.join(','));
 	}
 
 	const executable = process.platform.includes('win') ? 'window_build\\calib.exe' : './calib';
