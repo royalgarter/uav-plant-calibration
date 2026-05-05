@@ -11,7 +11,7 @@
 		[x-cloak] { display: none !important; }
 		.log-container { font-family: monospace; }
 		.translate-x-5 {
-			translate: 10px;
+			translate: 16px;
 		}
 		.translate-x-0 {
 			translate: unset;
@@ -22,11 +22,13 @@
 	<div class="max-w-screen mx-auto" x-data="calibrator()">
 		<header class="flex justify-between items-center bg-white p-6 ">
 			<div>
-				<h1 class="text-2xl font-bold text-gray-800">UAV Plant Calibration</h1>
-				<p class="text-gray-500">Precision radiometric calibration & NDVI generation</p>
+				<h1 class="text-2xl font-bold bg-green-100 text-green-700 px-3 py-1">UAV Phenomics Image Processing</h1>
+				<p class="text-gray-500 font-bold px-3">Precision vegetation indices calculation</p>
 			</div>
 			<div class="flex items-center space-x-2">
-				<span class="px-3 py-1 bg-green-100 text-green-700 text-xs font-bold uppercase">Plant Phenomics Lab</span>
+				<img width="64" height="64" class="self-center w-16 h-16 cursor-pointer" src='/assets/logo-hcmus.png'>
+				<img width="64" height="64" class="self-center w-16 h-16 p-2 cursor-pointer" src='/assets/logo-bio.png'>
+				<img height="64" class="self-center h-16 py-6 cursor-pointer" style="filter: contrast(0.6);" src='/assets/logo-fit.png'>
 			</div>
 		</header>
 
@@ -36,20 +38,15 @@
 				<div class="border p-4">
 					<h2 class="text-lg font-semibold mb-4 flex items-center">
 						<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
-						Parameters
+						Configuration
 					</h2>
 
 					<div class="space-y-2 text-sm">
-						<div class="flex items-center justify-between">
-							<span class="font-medium text-gray-700 text-blue-800">Enable Auto-Alignment</span>
-							<button @click="config.optimize = !config.optimize" :class="config.optimize ? 'bg-blue-600' : 'bg-gray-200'" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ring-offset-2">
-								<span :class="config.optimize ? 'translate-x-5' : 'translate-x-0'" class="pointer-events-none inline-block h-5 w-5 transform bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
-							</button>
-						</div>
+						
 						<div class="flex items-center">
 							<label class="block font-medium text-gray-700 w-36">Input Folder</label>
 							<input type="text" x-model="config.inDir" class="block w-full p-2 border text-xs">
-							<button @click="$refs.inDirPicker.click()" type="button" class="h-8 ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Browse Folder">
+							<button @click="$refs.inDirPicker.click()" type="button" class="cursor-pointer h-8 ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Browse Folder">
 								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
 							</button>
 							<input type="file" x-ref="inDirPicker" webkitdirectory directory class="hidden" @change="console.dir($event.target.files?.[0]);if($event.target.files.length) {config.inDir = $event.target.files[0].webkitRelativePath.split('/').slice(0, -1).join('/'); $event.target.value = '';}">
@@ -57,7 +54,7 @@
 						<div class="flex items-center">
 							<label class="block font-medium text-gray-700 w-36">Output Folder</label>
 							<input type="text" x-model="config.outDir" class="block w-full p-2 border text-xs">
-							<button @click="$refs.outDirPicker.click()" type="button" class="h-8 ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Browse Folder">
+							<button @click="$refs.outDirPicker.click()" type="button" class="cursor-pointer h-8 ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Browse Folder">
 								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
 							</button>
 							<input type="file" x-ref="outDirPicker" webkitdirectory directory class="hidden" @change="console.dir($event.target.files?.[0]);if($event.target.files.length) {config.outDir = $event.target.files[0].webkitRelativePath.split('/').slice(0, -1).join('/'); $event.target.value = '';}">
@@ -66,38 +63,45 @@
 						<hr class="my-6">
 
 						<div class="flex items-center justify-between">
-							<span class="font-medium text-gray-700">Enable Radiometric</span>
-							<button @click="config.doRadio = !config.doRadio" :class="config.doRadio ? 'bg-blue-600' : 'bg-gray-200'" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ring-offset-2">
+							<span class="font-medium text-gray-700 text-blue-800">Correlation Alignment</span>
+							<button @click="config.optimize = !config.optimize" :class="config.optimize ? 'bg-blue-600' : 'bg-gray-200'" class="relative inline-flex h-6 w-10 flex-shrink-0 cursor-pointer border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ring-offset-2">
+								<span :class="config.optimize ? 'translate-x-5' : 'translate-x-0'" class="pointer-events-none inline-block h-5 w-5 transform bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
+							</button>
+						</div>
+
+						<div class="flex items-center justify-between">
+							<span class="font-medium text-gray-700">Radiometric Calibration</span>
+							<button @click="config.doRadio = !config.doRadio" :class="config.doRadio ? 'bg-blue-600' : 'bg-gray-200'" class="relative inline-flex h-6 w-10 flex-shrink-0 cursor-pointer border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ring-offset-2">
 								<span :class="config.doRadio ? 'translate-x-5' : 'translate-x-0'" class="pointer-events-none inline-block h-5 w-5 transform bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
 							</button>
 						</div>
 
-						<div class="flex items-center justify-between" x-show="config.doRadio" x-transition>
-							<span class="font-medium text-gray-700 text-xs">Auto-Detect Board</span>
+						<div class="flex items-center justify-between" x-show="false && config.doRadio">
+							<span class="text-gray-700 text-xs">Auto-Detect Board</span>
 							<button @click="toggleAuto()" :class="config.autoRadio ? 'bg-blue-600' : 'bg-gray-200'" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ring-offset-2">
 								<span :class="config.autoRadio ? 'translate-x-5' : 'translate-x-0'" class="pointer-events-none inline-block h-5 w-5 transform bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
 							</button>
 						</div>
 
-						<div class="flex items-center" x-show="config.autoRadio && config.doRadio" x-transition>
-							<label class="block font-medium text-gray-700 w-36 text-xs">Board Thickness</label>
+						<div class="flex items-center" x-show="config.autoRadio && config.doRadio">
+							<label class="block text-gray-700 w-36 text-xs">Board Thickness</label>
 							<input type="number" x-model="config.autoRadioThickness" class="mt-1 block p-2 border text-xs w-20 lg:w-24 xl:w-48 2xl:w-96">
 							<p class="ml-2 mt-1 text-xs text-gray-500">(px)</br>0=auto</p>
 						</div>
 						
 						<div class="flex items-center" x-show="config.doRadio">
-							<label class="block font-medium text-gray-700 w-36 text-xs">Board Template</label>
+							<label class="block text-gray-700 w-36 text-xs">Board Template</label>
 							<input type="text" x-model="config.radioTemplatePath" class="block w-full p-2 border text-xs">
-							<button @click="$refs.radioTemplatePicker.click()" type="button" class="h-8 ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Select File">
+							<button @click="$refs.radioTemplatePicker.click()" type="button" class="cursor-pointer h-8 ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Select File">
 								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
 							</button>
 							<input type="file" x-ref="radioTemplatePicker" accept=".jpg,.jpeg,.png" class="hidden" @change="console.dir($event.target.files?.[0]);if($event.target.files.length) {config.radioTemplatePath = $event.target.files[0].name; $event.target.value = '';}">
 						</div>
 
 						<div class="flex items-center" x-show="config.doRadio">
-							<label class="block font-medium text-gray-700 w-36 text-xs">Reference CSV</label>
+							<label class="block text-gray-700 w-36 text-xs">Reference CSV</label>
 							<input type="text" x-model="config.radioRefFile" class="block w-full p-2 border text-xs">
-							<button @click="$refs.radioRefPicker.click()" type="button" class="h-8 ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Select File">
+							<button @click="$refs.radioRefPicker.click()" type="button" class="cursor-pointer h-8 ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Select File">
 								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
 							</button>
 							<input type="file" x-ref="radioRefPicker" accept=".csv" class="hidden" @change="console.dir($event.target.files?.[0]);if($event.target.files.length) {config.radioRefFile = $event.target.files[0].name; $event.target.value = '';}">
@@ -105,19 +109,23 @@
 					</div>
 
 					<hr class="my-6">
-					<label class="block font-medium text-gray-700 w-36 my-2">Vegetative Index:</label>
-					<div class="space-x-2 space-y-2 text-sm flex">
+					<label class="block font-medium text-gray-700 w-36 my-2">Vegetation Indices:</label>
+					<div class="space-x-2 space-y-2 text-sm block">
 						<template x-for="vegIdx in Object.keys(config.calc)" :key="vegIdx">
-							<button @click="config.calc[vegIdx] = !config.calc[vegIdx]" :class="config.calc[vegIdx] ? 'bg-blue-600' : 'bg-gray-200'" class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ring-offset-2">
-								<span x-text="vegIdx" :class="config.calc[vegIdx] ? 'translate-x-5' : 'translate-x-0'" class="pointer-events-none inline-block h-5 w-5 transform bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
-							</button>
+							<div class="inline-block h-6 w-11 flex-shrink-0">
+								<span x-text="vegIdx" class="text-xs"></span>
+								<button @click="config.calc[vegIdx] = !config.calc[vegIdx]" :class="config.calc[vegIdx] ? 'bg-green-600' : 'bg-gray-200'" class="relative inline-flex h-6 w-10 flex-shrink-0 cursor-pointer border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ring-offset-2">
+									<span :class="config.calc[vegIdx] ? 'translate-x-5' : 'translate-x-0'" class="pointer-events-none inline-block h-5 w-5 transform bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
+								</button>
+							</div>
+							
 						</template>
 					</div>
 
 					<div class="mt-8">
-						<button @click="runCalibration()" :disabled="running" class="w-full bg-blue-600 text-white font-bold py-3 px-4 shadow hover:bg-blue-700 transition disabled:opacity-50 flex justify-center items-center">
+						<button @click="runCalibration()" :disabled="running" class="cursor-pointer w-full bg-green-600 text-white font-bold py-3 px-4 shadow hover:bg-green-700 transition disabled:opacity-50 flex justify-center items-center">
 							<template x-if="!running">
-								<span>AUTO RUN</span>
+								<span>PROCESS</span>
 							</template>
 							<template x-if="running">
 								<div class="flex items-center">
@@ -156,41 +164,95 @@
 
 			<!-- Output/Result Column -->
 			<div class="md:col-span-9 space-y-6">
-				<!-- Image Gallery -->
-				<div class="border p-6 min-h-96">
-					<div class="flex justify-between items-center mb-6">
-						<h2 class="text-lg font-semibold">Outputs</h2>
-						<div class="flex space-x-2">
-							<select x-model="viewDir" @change="fetchOutputFiles()" class="text-sm border-gray-300 p-1 border">
-								<option value="calib">Calibrated</option>
-								<option value="radio">Radiometric</option>
-								<option value="ndvi">NDVI</option>
-							</select>
-							<button @click="fetchOutputFiles()" class="p-1 hover:bg-gray-100 rounded">
-								<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-							</button>
-						</div>
+				<div class="border min-h-96">
+					<!-- Tabs Header -->
+					<div class="flex border-b">
+						<button @click="activeTab = 'gallery'" :class="activeTab === 'gallery' ? 'border-b-2 border-green-600 text-green-700 bg-green-50' : 'text-gray-500 hover:text-gray-700'" class="px-6 py-3 font-semibold transition-colors">Image Gallery</button>
+						<button @click="activeTab = 'reports'; fetchReportFiles()" :class="activeTab === 'reports' ? 'border-b-2 border-green-600 text-green-700 bg-green-50' : 'text-gray-500 hover:text-gray-700'" class="px-6 py-3 font-semibold transition-colors">Reports</button>
 					</div>
 
-					<div x-show="loadingFiles" class="flex justify-center py-12">
-						<div class="animate-spin h-12 w-12 border-b-2 border-blue-600"></div>
-					</div>
-
-					<div x-show="!loadingFiles && files.length === 0" class="text-center py-12 text-gray-400">
-						<svg class="w-16 h-16 mx-auto mb-4 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-						<p>No images found in <span class="font-mono" x-text="currentPath"></span></p>
-					</div>
-
-					<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-4" x-show="!loadingFiles && files.length > 0">
-						<template x-for="file in files" :key="file.name">
-							<div class="group relative bg-gray-50 overflow-hidden border hover:border-blue-400 transition cursor-pointer" 
-								x-show="!file.name.includes('tif')"
-								@click="openModal(file)"
-							>
-								<img :src="'/'/*IMPORTANT: relative path*/ + currentPath + '/' + file.name" :alt="file.name" class="w-full h-32 object-cover">
-								<div class="p-2 text-sm truncate text-gray-600 bg-white" x-text="file.name"></div>
+					<div class="p-6">
+						<!-- Image Gallery Tab -->
+						<div x-show="activeTab === 'gallery'">
+							<div class="flex justify-between items-center mb-6">
+								<!-- <h2 class="text-lg font-semibold">Processed Images</h2> -->
+								<div class="flex space-x-2">
+									<select x-model="viewDir" @change="fetchOutputFiles()" class="text-sm border-gray-300 p-1 border">
+										<option value="calib">Corelation Aligment</option>
+										<option value="radio">Radiometric Calibration</option>
+										<option value="ndvi">Vegetation Indices</option>
+									</select>
+									<button @click="fetchOutputFiles()" class="p-1 hover:bg-gray-100 rounded">
+										<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+									</button>
+								</div>
 							</div>
-						</template>
+
+							<div x-show="loadingFiles" class="flex justify-center py-12">
+								<div class="animate-spin h-12 w-12 border-b-2 border-blue-600"></div>
+							</div>
+
+							<div x-show="!loadingFiles && files.length === 0" class="text-center py-12 text-gray-400">
+								<svg class="w-16 h-16 mx-auto mb-4 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+								<p>No images found in <span class="font-mono" x-text="currentPath"></span></p>
+							</div>
+
+							<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-4" x-show="!loadingFiles && files.length > 0">
+								<template x-for="file in files" :key="file.name">
+									<div class="group relative bg-gray-50 overflow-hidden border hover:border-blue-400 transition cursor-pointer" 
+										x-show="!file.name.includes('tif')"
+										@click="openModal(file)"
+									>
+										<img :src="'/'/*IMPORTANT: relative path*/ + currentPath + '/' + file.name" :alt="file.name" class="w-full h-32 object-cover">
+										<div class="p-2 text-sm truncate text-gray-600 bg-white" x-text="file.name"></div>
+									</div>
+								</template>
+							</div>
+						</div>
+
+						<!-- Reports Tab -->
+						<div x-show="activeTab === 'reports'" x-cloak>
+							<div class="flex justify-between items-center mb-6">
+								<!-- <h2 class="text-lg font-semibold">CSV Reports</h2> -->
+								<div class="flex space-x-2">
+									<select x-model="selectedReport" @change="loadReport(selectedReport)" class="text-sm border-gray-300 p-1 border">
+										<option value="">Select a report...</option>
+										<template x-for="report in reports" :key="report.name">
+											<option :value="report.name" x-text="report.name"></option>
+										</template>
+									</select>
+									<button @click="fetchReportFiles()" class="p-1 hover:bg-gray-100 rounded">
+										<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+									</button>
+								</div>
+							</div>
+
+							<div class="overflow-x-auto border">
+								<table class="min-w-full divide-y divide-gray-200 text-xs">
+									<thead class="bg-gray-50">
+										<template x-if="reportData.length > 0">
+											<tr>
+												<template x-for="cell in reportData[0]">
+													<th class="px-3 py-2 text-left font-semibold text-gray-600 uppercase tracking-wider border-b" x-text="cell"></th>
+												</template>
+											</tr>
+										</template>
+									</thead>
+									<tbody class="bg-white divide-y divide-gray-100">
+										<template x-for="(row, index) in reportData.slice(1)" :key="index">
+											<tr class="hover:bg-gray-50">
+												<template x-for="cell in row">
+													<td class="px-3 py-2 whitespace-nowrap border-b" x-text="cell"></td>
+												</template>
+											</tr>
+										</template>
+									</tbody>
+								</table>
+								<div x-show="reportData.length === 0" class="text-center py-12 text-gray-400">
+									<p>No report data to display. Please select a CSV file.</p>
+								</div>
+							</div>
+						</div>
 					</div>
 				</div>
 			</div>
@@ -222,6 +284,12 @@
 					optimize: true,
 					calc: {
 						NVDI: true,
+						EVI: false,
+						GNDVI: false,
+						NDRE: false,
+						RDVI: false,
+						OSAVI: false,
+						MSR: false,
 						GCP: false,
 					}
 				},
@@ -233,6 +301,10 @@
 				modalOpen: false,
 				modalImage: '',
 				modalTitle: '',
+				activeTab: 'gallery',
+				reports: [],
+				selectedReport: '',
+				reportData: [],
 
 				get currentPath() {
 					return this.config.outDir + '/' + this.viewDir;
@@ -286,6 +358,7 @@
 						} else {
 							this.logs += `\nProcess finished with: ${result.code == 0 ? '[SUCCESS]': `code [${result.code}]`}`;
 							this.fetchOutputFiles();
+							this.fetchReportFiles();
 						}
 					} catch (err) {
 						this.logs += `\nNetwork Error: ${err.message}`;
@@ -318,6 +391,33 @@
 					}
 				},
 
+				async fetchReportFiles() {
+					try {
+						const response = await fetch(`/list?dir=${encodeURIComponent(this.config.outDir)}`);
+						const data = await response.json();
+						if (Array.isArray(data)) {
+							this.reports = data.filter(f => !f.isDirectory && f.ext.toLowerCase() === '.csv');
+						}
+					} catch (err) {
+						console.error('Failed to fetch reports', err);
+					}
+				},
+
+				async loadReport(fileName) {
+					if (!fileName) {
+						this.reportData = [];
+						return;
+					}
+					try {
+						const response = await fetch('/' + this.config.outDir + '/' + fileName);
+						const text = await response.text();
+						this.reportData = text.trim().split('\n').map(row => row.split(','));
+					} catch (err) {
+						console.error('Failed to load report', err);
+						this.reportData = [];
+					}
+				},
+
 				openModal(file) {
 					this.modalImage = '/'/*IMPORTANT: relative path*/ + this.currentPath + '/' + file.name;
 					this.modalTitle = file.name;
@@ -327,6 +427,7 @@
 				init() {
 					// Initial fetch if output folder exists
 					this.fetchOutputFiles();
+					this.fetchReportFiles();
 				}
 			}
 		}
