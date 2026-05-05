@@ -10,10 +10,16 @@
 	<style>
 		[x-cloak] { display: none !important; }
 		.log-container { font-family: monospace; }
+		.translate-x-5 {
+			translate: 10px;
+		}
+		.translate-x-0 {
+			translate: unset;
+		}
 	</style>
 </head>
 <body class="min-h-screen p-4">
-	<div class="max-w-6xl mx-auto" x-data="calibrator()">
+	<div class="max-w-screen mx-auto" x-data="calibrator()">
 		<header class="flex justify-between items-center bg-white p-6 ">
 			<div>
 				<h1 class="text-2xl font-bold text-gray-800">UAV Plant Calibration</h1>
@@ -24,91 +30,94 @@
 			</div>
 		</header>
 
-		<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+		<div class="grid grid-cols-1 md:grid-cols-12 gap-8">
 			<!-- Configuration Column -->
-			<div class="lg:col-span-1 space-y-6">
-				<div class="border p-6 ">
+			<div class="md:col-span-3 space-y-6">
+				<div class="border p-4">
 					<h2 class="text-lg font-semibold mb-4 flex items-center">
 						<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
-						Configuration
+						Parameters
 					</h2>
 
-					<div class="space-y-4">
-						<div>
-							<label class="block text-sm font-medium text-gray-700">Input Folder</label>
-							<div class="flex mt-1">
-								<input type="text" x-model="config.inDir" class="block w-full sm:text-sm p-2 border">
-								<button @click="$refs.inDirPicker.click()" type="button" class="ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Browse Folder">
-									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
-								</button>
-							</div>
+					<div class="space-y-2 text-sm">
+						<div class="flex items-center justify-between">
+							<span class="font-medium text-gray-700 text-blue-800">Enable Auto-Alignment</span>
+							<button @click="config.optimize = !config.optimize" :class="config.optimize ? 'bg-blue-600' : 'bg-gray-200'" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ring-offset-2">
+								<span :class="config.optimize ? 'translate-x-5' : 'translate-x-0'" class="pointer-events-none inline-block h-5 w-5 transform bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
+							</button>
+						</div>
+						<div class="flex items-center">
+							<label class="block font-medium text-gray-700 w-36">Input Folder</label>
+							<input type="text" x-model="config.inDir" class="block w-full p-2 border text-xs">
+							<button @click="$refs.inDirPicker.click()" type="button" class="h-8 ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Browse Folder">
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+							</button>
 							<input type="file" x-ref="inDirPicker" webkitdirectory directory class="hidden" @change="console.dir($event.target.files?.[0]);if($event.target.files.length) {config.inDir = $event.target.files[0].webkitRelativePath.split('/').slice(0, -1).join('/'); $event.target.value = '';}">
 						</div>
-						<div>
-							<label class="block text-sm font-medium text-gray-700">Output Folder</label>
-							<div class="flex mt-1">
-								<input type="text" x-model="config.outDir" class="block w-full sm:text-sm p-2 border">
-								<button @click="$refs.outDirPicker.click()" type="button" class="ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Browse Folder">
-									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
-								</button>
-							</div>
+						<div class="flex items-center">
+							<label class="block font-medium text-gray-700 w-36">Output Folder</label>
+							<input type="text" x-model="config.outDir" class="block w-full p-2 border text-xs">
+							<button @click="$refs.outDirPicker.click()" type="button" class="h-8 ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Browse Folder">
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+							</button>
 							<input type="file" x-ref="outDirPicker" webkitdirectory directory class="hidden" @change="console.dir($event.target.files?.[0]);if($event.target.files.length) {config.outDir = $event.target.files[0].webkitRelativePath.split('/').slice(0, -1).join('/'); $event.target.value = '';}">
 						</div>
-						<div>
-							<label class="block text-sm font-medium text-gray-700">Reference CSV</label>
-							<div class="flex mt-1">
-								<input type="text" x-model="config.radioRefFile" class="block w-full sm:text-sm p-2 border text-xs">
-								<button @click="$refs.radioRefPicker.click()" type="button" class="ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Select File">
-									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
-								</button>
-							</div>
-							<input type="file" x-ref="radioRefPicker" accept=".csv" class="hidden" @change="console.dir($event.target.files?.[0]);if($event.target.files.length) {config.radioRefFile = $event.target.files[0].name; $event.target.value = '';}">
-						</div>
-						<div>
-							<label class="block text-sm font-medium text-gray-700">Board Template</label>
-							<div class="flex mt-1">
-								<input type="text" x-model="config.radioTemplatePath" class="block w-full sm:text-sm p-2 border text-xs">
-								<button @click="$refs.radioTemplatePicker.click()" type="button" class="ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Select File">
-									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
-								</button>
-							</div>
-							<input type="file" x-ref="radioTemplatePicker" accept=".jpg,.jpeg,.png" class="hidden" @change="console.dir($event.target.files?.[0]);if($event.target.files.length) {config.radioTemplatePath = $event.target.files[0].name; $event.target.value = '';}">
-						</div>
 
-						<hr class="my-4">
+						<hr class="my-6">
 
 						<div class="flex items-center justify-between">
-							<span class="text-sm font-medium text-gray-700">Enable Radiometric</span>
+							<span class="font-medium text-gray-700">Enable Radiometric</span>
 							<button @click="config.doRadio = !config.doRadio" :class="config.doRadio ? 'bg-blue-600' : 'bg-gray-200'" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ring-offset-2">
 								<span :class="config.doRadio ? 'translate-x-5' : 'translate-x-0'" class="pointer-events-none inline-block h-5 w-5 transform bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
 							</button>
 						</div>
 
 						<div class="flex items-center justify-between" x-show="config.doRadio" x-transition>
-							<span class="text-sm font-medium text-gray-700">Auto-Detect Board</span>
+							<span class="font-medium text-gray-700 text-xs">Auto-Detect Board</span>
 							<button @click="toggleAuto()" :class="config.autoRadio ? 'bg-blue-600' : 'bg-gray-200'" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ring-offset-2">
 								<span :class="config.autoRadio ? 'translate-x-5' : 'translate-x-0'" class="pointer-events-none inline-block h-5 w-5 transform bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
 							</button>
 						</div>
 
-						<div x-show="config.autoRadio && config.doRadio" x-transition>
-							<label class="block text-sm font-medium text-gray-700">Board Thickness (px)</label>
-							<input type="number" x-model="config.autoRadioThickness" class="mt-1 block w-full sm:text-sm p-2 border">
-							<p class="mt-1 text-xs text-gray-500">0 = auto, >0 = specific width</p>
+						<div class="flex items-center" x-show="config.autoRadio && config.doRadio" x-transition>
+							<label class="block font-medium text-gray-700 w-36 text-xs">Board Thickness</label>
+							<input type="number" x-model="config.autoRadioThickness" class="mt-1 block p-2 border text-xs w-20 lg:w-24 xl:w-48 2xl:w-96">
+							<p class="ml-2 mt-1 text-xs text-gray-500">(px)</br>0=auto</p>
+						</div>
+						
+						<div class="flex items-center" x-show="config.doRadio">
+							<label class="block font-medium text-gray-700 w-36 text-xs">Board Template</label>
+							<input type="text" x-model="config.radioTemplatePath" class="block w-full p-2 border text-xs">
+							<button @click="$refs.radioTemplatePicker.click()" type="button" class="h-8 ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Select File">
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+							</button>
+							<input type="file" x-ref="radioTemplatePicker" accept=".jpg,.jpeg,.png" class="hidden" @change="console.dir($event.target.files?.[0]);if($event.target.files.length) {config.radioTemplatePath = $event.target.files[0].name; $event.target.value = '';}">
 						</div>
 
-						<div class="flex items-center justify-between">
-							<span class="text-sm font-medium text-gray-700 text-blue-800">ECC Optimization</span>
-							<button @click="config.optimize = !config.optimize" :class="config.optimize ? 'bg-green-600' : 'bg-gray-200'" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ring-offset-2">
-								<span :class="config.optimize ? 'translate-x-5' : 'translate-x-0'" class="pointer-events-none inline-block h-5 w-5 transform bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
+						<div class="flex items-center" x-show="config.doRadio">
+							<label class="block font-medium text-gray-700 w-36 text-xs">Reference CSV</label>
+							<input type="text" x-model="config.radioRefFile" class="block w-full p-2 border text-xs">
+							<button @click="$refs.radioRefPicker.click()" type="button" class="h-8 ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Select File">
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
 							</button>
+							<input type="file" x-ref="radioRefPicker" accept=".csv" class="hidden" @change="console.dir($event.target.files?.[0]);if($event.target.files.length) {config.radioRefFile = $event.target.files[0].name; $event.target.value = '';}">
 						</div>
+					</div>
+
+					<hr class="my-6">
+					<label class="block font-medium text-gray-700 w-36 my-2">Vegetative Index:</label>
+					<div class="space-x-2 space-y-2 text-sm flex">
+						<template x-for="vegIdx in Object.keys(config.calc)" :key="vegIdx">
+							<button @click="config.calc[vegIdx] = !config.calc[vegIdx]" :class="config.calc[vegIdx] ? 'bg-blue-600' : 'bg-gray-200'" class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ring-offset-2">
+								<span x-text="vegIdx" :class="config.calc[vegIdx] ? 'translate-x-5' : 'translate-x-0'" class="pointer-events-none inline-block h-5 w-5 transform bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
+							</button>
+						</template>
 					</div>
 
 					<div class="mt-8">
 						<button @click="runCalibration()" :disabled="running" class="w-full bg-blue-600 text-white font-bold py-3 px-4 shadow hover:bg-blue-700 transition disabled:opacity-50 flex justify-center items-center">
 							<template x-if="!running">
-								<span>RUN CALIBRATION</span>
+								<span>AUTO RUN</span>
 							</template>
 							<template x-if="running">
 								<div class="flex items-center">
@@ -121,33 +130,36 @@
 				</div>
 
 				<!-- Command Preview -->
-				<div class="bg-gray-800 p-4  overflow-hidden">
+				<!-- <div class="bg-gray-800 p-4  overflow-hidden">
 					<h3 class="text-xs font-bold text-gray-400 uppercase mb-2">CLI Command Preview</h3>
 					<code class="text-green-400 text-xs break-all" x-text="cliCommand"></code>
-				</div>
-			</div>
+				</div> -->
 
-			<!-- Output/Result Column -->
-			<div class="lg:col-span-2 space-y-6">
 				<!-- Log View -->
 				<div class="border overflow-hidden flex flex-col h-64">
 					<div class="bg-gray-50 px-4 py-2 border-b flex justify-between items-center">
-						<span class="text-sm font-semibold text-gray-700">Terminal Output</span>
+						<span class="text-sm font-semibold text-gray-700">Logs</span>
 						<button @click="logs = ''" class="text-xs text-gray-400 hover:text-gray-600">Clear</button>
 					</div>
 					<div class="p-2 flex-1 overflow-y-hidden bg-black text-gray-300 log-container text-xs whitespace-pre-wrap" x-ref="logArea">
-						<template x-if="!logs">
+						<div>
+							<code class="text-green-400 text-xs break-all" x-text="cliCommand"></code>	
+						</div>
+						<!-- <template x-if="!logs">
 							<span class="text-gray-600">Waiting for process to start...</span>
-						</template>
+						</template> -->
 						<!-- <span x-text="logs"></span> -->
 						<textarea class="w-full h-full" x-show="logs" x-model="logs"></textarea>
 					</div>
 				</div>
+			</div>
 
+			<!-- Output/Result Column -->
+			<div class="md:col-span-9 space-y-6">
 				<!-- Image Gallery -->
 				<div class="border p-6 min-h-96">
 					<div class="flex justify-between items-center mb-6">
-						<h2 class="text-lg font-semibold">Generated Outputs</h2>
+						<h2 class="text-lg font-semibold">Outputs</h2>
 						<div class="flex space-x-2">
 							<select x-model="viewDir" @change="fetchOutputFiles()" class="text-sm border-gray-300 p-1 border">
 								<option value="calib">Calibrated</option>
@@ -169,9 +181,12 @@
 						<p>No images found in <span class="font-mono" x-text="currentPath"></span></p>
 					</div>
 
-					<div class="grid grid-cols-2 md:grid-cols-3 gap-4" x-show="!loadingFiles && files.length > 0">
+					<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-4" x-show="!loadingFiles && files.length > 0">
 						<template x-for="file in files" :key="file.name">
-							<div class="group relative bg-gray-50 overflow-hidden border hover:border-blue-400 transition cursor-pointer" @click="openModal(file)">
+							<div class="group relative bg-gray-50 overflow-hidden border hover:border-blue-400 transition cursor-pointer" 
+								x-show="!file.name.includes('tif')"
+								@click="openModal(file)"
+							>
 								<img :src="'/'/*IMPORTANT: relative path*/ + currentPath + '/' + file.name" :alt="file.name" class="w-full h-32 object-cover">
 								<div class="p-2 text-sm truncate text-gray-600 bg-white" x-text="file.name"></div>
 							</div>
@@ -205,6 +220,10 @@
 					autoRadio: true,
 					autoRadioThickness: 10,
 					optimize: true,
+					calc: {
+						NVDI: true,
+						GCP: false,
+					}
 				},
 				running: false,
 				logs: '',
@@ -220,7 +239,9 @@
 				},
 
 				get cliCommand() {
-					let cmd = `./calib ${this.config.inDir} ${this.config.outDir}`;
+					let binary = `./window_build/calib.exe`;
+
+					let cmd = `${binary} ${this.config.inDir} ${this.config.outDir}`;
 					if (this.config.doRadio) {
 						cmd += ' --radio';
 						if (this.config.radioRefFile) cmd += ` --ref ${this.config.radioRefFile}`;
