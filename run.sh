@@ -6,7 +6,7 @@ CW_FLAGS="-Wall -Wextra -pedantic"
 
 LIBS="-lstdc++"
 TIFFLIB="-ltiff -Ilibtiff -Ilibtiff/include -Llibtiff/lib"
-OPENCVLIB="-Ic:/opencv -Ic:/opencv/include -Lc:/opencv/x64/mingw/lib/ -lopencv_core455 -lopencv_calib3d455 -lopencv_imgcodecs455 -lopencv_imgproc455 -lopencv_video455 -lopencv_highgui455 -lopencv_features2d455"
+OPENCVLIB_WIN="-Ic:/opencv -Ic:/opencv/include -Lc:/opencv/x64/mingw/lib/ -lopencv_core455 -lopencv_calib3d455 -lopencv_imgcodecs455 -lopencv_imgproc455 -lopencv_video455 -lopencv_highgui455 -lopencv_features2d455"
 RAYLIB="-Iraylib/include -Lraylib/lib -lraylib"
 WINGUILIB="-DWINGUI -lopengl32 -lgdi32 -lwinmm -lcomdlg32 -lcomctl32 -lole32 -lshell32 -luuid"
 RELEASE_FILES="calib-web-gui.bat calib-window-gui.bat window_build/ .input_ref/ webui/ package.json"
@@ -41,7 +41,7 @@ case "$1" in
     ###############################################################################################
 
     "build:calib")
-        run_cmd $CC $CFLAGS src/calib.cc -o calib $LIBS -ltiff $(pkg-config --cflags --libs opencv4)
+        run_cmd $CC $CFLAGS src/calib.cc src/calib-func.cc -o calib $LIBS -ltiff $(pkg-config --cflags --libs opencv4)
         find . -type f -name "calib" -executable
         ;;
     "build:calib-webui")
@@ -52,7 +52,7 @@ case "$1" in
     ###############################################################################################        
 
     "build:calib-win")
-        run_cmd $CC $CFLAGS src/calib.cc -o window_build/calib.exe $LIBS $TIFFLIB $OPENCVLIB
+        run_cmd $CC $CFLAGS src/calib.cc src/calib-func.cc -o window_build/calib.exe $LIBS $TIFFLIB $OPENCVLIB_WIN
         find . -type f -name "calib.exe"
         ;;
     "build:calib-webui-win")
@@ -60,7 +60,7 @@ case "$1" in
         find . -type f -name "calib-web.exe"
         ;;
     "build:calib-win-gui")
-        run_cmd $CC $CFLAGS src/calib.cc -o window_build/calib-wingui.exe $LIBS $TIFFLIB $OPENCVLIB $RAYLIB $WINGUILIB
+        run_cmd $CC $CFLAGS src/calib.cc src/calib-func.cc -o window_build/calib-wingui.exe $LIBS $TIFFLIB $OPENCVLIB_WIN $RAYLIB $WINGUILIB
         find . -type f -name "calib-wingui.exe"
         ;;
     
