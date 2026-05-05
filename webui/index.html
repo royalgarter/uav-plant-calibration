@@ -352,25 +352,63 @@
 							body: JSON.stringify(payload)
 						});
 
-						const result = await response.json();
-
-						if (result.stderr) this.logs += "\nSTDERR:\n" + result.stderr;
-
-						if (result.stdout) this.logs += "\nSTDOUT:\n" + result.stdout;
-
-						if (result.error) {
-							this.logs += `\nFAILED: ${result.error}`;
-						} else {
-							this.logs += `\nProcess finished with: ${result.code == 0 ? '[SUCCESS]': `code [${result.code}]`}`;
-							this.fetchOutputFiles();
-							this.fetchReportFiles();
+						if (!response.body) {
+							throw new Error('No response body');
 						}
+
+						const reader = response.body.getReader();
+						const decoder = new TextDecoder();
+						let buffer = '';
+
+						while (true) {
+							const { done, value } = await reader.read();
+							if (done) break;
+
+							buffer += decoder.decode(value, { stream: true });
+							const lines = buffer.split('\n');
+							buffer = lines.pop();
+
+							for (const line of lines) {
+								if (!line.trim()) continue;
+								try {
+									const data = JSON.parse(line);
+									if (data.stdout) this.logs += data.stdout;
+									if (data.stderr) this.logs += data.stderr;
+									if (data.error) this.logs += `\nERROR: ${data.error}\n`;
+									if (data.code !== undefined) {
+										this.logs += `\nProcess finished with: ${data.code == 0 ? '[SUCCESS]' : `code [${data.code}]`}\n`;
+										if (data.code === 0) {
+											this.fetchOutputFiles();
+											this.fetchReportFiles();
+										}
+									}
+								} catch (e) {
+									console.error('Failed to parse log line', line, e);
+								}
+							}
+
+							this.$nextTick(() => {
+								if (this.$refs.logArea) {
+									const textarea = this.$refs.logArea.querySelector('textarea');
+									if (textarea) {
+										textarea.scrollTop = textarea.scrollHeight;
+									} else {
+										this.$refs.logArea.scrollTop = this.$refs.logArea.scrollHeight;
+									}
+								}
+							});
+						}
+
 					} catch (err) {
 						this.logs += `\nNetwork Error: ${err.message}`;
 					} finally {
 						this.running = false;
 						this.$nextTick(() => {
-							this.$refs.logArea.scrollTop = this.$refs.logArea.scrollHeight;
+							if (this.$refs.logArea) {
+								const textarea = this.$refs.logArea.querySelector('textarea');
+								if (textarea) textarea.scrollTop = textarea.scrollHeight;
+								else this.$refs.logArea.scrollTop = this.$refs.logArea.scrollHeight;
+							}
 						});
 					}
 				},

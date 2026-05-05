@@ -144,7 +144,14 @@ function executeCalibration(config, res) {
 
 	console.log('Executing command:', executable, args.join(' '));
 
-	fs.rmdir(path.join(process.cwd(), outDir), { recursive: true, force: true }, console.log);
+	// Remove existing output directory
+	try {
+		if (fs.existsSync(outDir)) {
+			fs.rmSync(outDir, { recursive: true, force: true });
+		}
+	} catch (e) {
+		console.error('Failed to remove outDir:', e);
+	}
 
 	let exePath = path.join(process.cwd(), executable);
 	if (!fs.existsSync(exePath) && !process.platform.includes('win')) {
@@ -152,37 +159,38 @@ function executeCalibration(config, res) {
 		exePath = 'calib';
 	}
 
+	res.writeHead(200, {
+		'Content-Type': 'application/x-ndjson',
+		'Cache-Control': 'no-cache',
+		'Connection': 'keep-alive'
+	});
+
 	const child = spawn(exePath, args);
 
-	let stdout = '';
-	let stderr = '';
-
 	child.stdout.on('data', data => {
-		stdout += data.toString();
+		res.write(JSON.stringify({ stdout: data.toString() }) + '\n');
 		console.log(`STDOUT: ${data.toString().trim()}`);
 	});
 
 	child.stderr.on('data', data => {
-		stderr += data.toString();
+		res.write(JSON.stringify({ stderr: data.toString() }) + '\n');
 		console.error(`STDERR: ${data.toString().trim()}`);
 	});
 
 	child.on('close', code => {
-		res.writeHead(200, { 'Content-Type': 'application/json' });
-		res.end(JSON.stringify({
+		res.write(JSON.stringify({
 			code,
-			stdout,
-			stderr,
 			command: `${executable} ${args.join(' ')}`
-		}));
+		}) + '\n');
+		res.end();
 	});
 
 	child.on('error', err => {
-		res.writeHead(500, { 'Content-Type': 'application/json' });
-		res.end(JSON.stringify({
+		res.write(JSON.stringify({
 			error: `Failed to start process: ${err.message}`,
 			command: `${executable} ${args.join(' ')}`
-		}));
+		}) + '\n');
+		res.end();
 	});
 }
 
