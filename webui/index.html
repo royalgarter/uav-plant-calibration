@@ -18,7 +18,7 @@
 		}
 	</style>
 </head>
-<body class="min-h-screen p-4">
+<body class="min-h-screen p-4 overflow-y-scroll">
 	<div class="max-w-screen mx-auto" x-data="calibrator()">
 		<header class="flex justify-between items-center bg-white p-6 ">
 			<div>
@@ -32,9 +32,9 @@
 			</div>
 		</header>
 
-		<div class="grid grid-cols-1 md:grid-cols-12 gap-8">
+		<div class="grid grid-cols-1 md:grid-cols-12 gap-4">
 			<!-- Configuration Column -->
-			<div class="md:col-span-3 space-y-6">
+			<div class="md:col-span-3 space-y-4">
 				<div class="border p-4">
 					<h2 class="text-lg font-semibold mb-4 flex items-center">
 						<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
@@ -42,7 +42,7 @@
 					</h2>
 
 					<div class="space-y-2 text-sm">
-						
+
 						<div class="flex items-center">
 							<label class="block font-medium text-gray-700 w-36">Input Folder</label>
 							<input type="text" x-model="config.inDir" class="block w-full p-2 border text-xs">
@@ -88,7 +88,7 @@
 							<input type="number" x-model="config.autoRadioThickness" class="mt-1 block p-2 border text-xs w-20 lg:w-24 xl:w-48 2xl:w-96">
 							<p class="ml-2 mt-1 text-xs text-gray-500">(px)</br>0=auto</p>
 						</div>
-						
+
 						<div class="flex items-center" x-show="config.doRadio">
 							<label class="block text-gray-700 w-36 text-xs">Board Template</label>
 							<input type="text" x-model="config.radioTemplatePath" class="block w-full p-2 border text-xs">
@@ -118,7 +118,7 @@
 									<span :class="config.calc[vegIdx] ? 'translate-x-5' : 'translate-x-0'" class="pointer-events-none inline-block h-5 w-5 transform bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
 								</button>
 							</div>
-							
+
 						</template>
 					</div>
 
@@ -144,20 +144,20 @@
 				</div> -->
 
 				<!-- Log View -->
-				<div class="border overflow-hidden flex flex-col h-64">
+				<div class="border overflow-x-hidden h-min flex flex-col">
 					<div class="bg-gray-50 px-4 py-2 border-b flex justify-between items-center">
 						<span class="text-sm font-semibold text-gray-700">Logs</span>
 						<button @click="logs = ''" class="text-xs text-gray-400 hover:text-gray-600">Clear</button>
 					</div>
-					<div class="p-2 flex-1 overflow-y-hidden bg-black text-gray-300 log-container text-xs whitespace-pre-wrap" x-ref="logArea">
+					<div class="pt-2 pl-1 flex-1 h-min bg-black text-gray-300 log-container text-xs whitespace-pre-wrap" x-ref="logArea">
 						<div>
-							<code class="text-green-400 text-xs break-all" x-text="cliCommand"></code>	
+							<code class="text-green-400 text-xs break-all" x-text="cliCommand"></code>
 						</div>
 						<!-- <template x-if="!logs">
 							<span class="text-gray-600">Waiting for process to start...</span>
 						</template> -->
 						<!-- <span x-text="logs"></span> -->
-						<textarea class="w-full h-full" x-show="logs" x-model="logs"></textarea>
+						<textarea class="w-full h-64 mt-2" x-show="logs" x-model="logs"></textarea>
 					</div>
 				</div>
 			</div>
@@ -199,7 +199,7 @@
 
 							<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-4" x-show="!loadingFiles && files.length > 0">
 								<template x-for="file in files" :key="file.name">
-									<div class="group relative bg-gray-50 overflow-hidden border hover:border-blue-400 transition cursor-pointer" 
+									<div class="group relative bg-gray-50 overflow-hidden border hover:border-blue-400 transition cursor-pointer"
 										x-show="!file.name.includes('tif')"
 										@click="openModal(file)"
 									>
@@ -324,7 +324,7 @@
 					}
 					if (this.config.radioTemplatePath) cmd += ` --template ${this.config.radioTemplatePath}`;
 					if (this.config.optimize) cmd += ' --optimize';
-					
+
 					const indices = Object.keys(this.config.calc).filter(k => this.config.calc[k]).map(k => k.toLowerCase());
 					if (indices.length > 0) {
 						cmd += ` --veg-idx ${indices.join(',')}`;
