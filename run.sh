@@ -9,7 +9,7 @@ TIFFLIB="-ltiff -Ilibtiff -Ilibtiff/include -Llibtiff/lib"
 OPENCVLIB_WIN="-Ic:/opencv -Ic:/opencv/include -Lc:/opencv/x64/mingw/lib/ -lopencv_core455 -lopencv_calib3d455 -lopencv_imgcodecs455 -lopencv_imgproc455 -lopencv_video455 -lopencv_highgui455 -lopencv_features2d455"
 RAYLIB="-Iraylib/include -Lraylib/lib -lraylib"
 WINGUILIB="-DWINGUI -lopengl32 -lgdi32 -lwinmm -lcomdlg32 -lcomctl32 -lole32 -lshell32 -luuid"
-RELEASE_FILES="calib-web-gui.bat calib-window-gui.bat window_build/ .input_ref/ webui/ package.json"
+RELEASE_FILES="calib-web.exe calib-web-node.bat calib-web-gui.bat calib-window-gui.bat window_build/ .input_ref/ webui/ package.json UAV_Plant_Calibration.url How_To_Use.md"
 RELEASE_FILES_WIN=${RELEASE_FILES// /\,}
 RELEASE_TIME="$(date +'%Y%m%d_%H%M')"
 
