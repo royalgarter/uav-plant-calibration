@@ -648,11 +648,49 @@ Mat calculateVegIndex(const string& type, const map<int, Mat>& bands) {
 	return result;
 }
 
-void applyGreenMask(Mat& indexImg, const Mat& rgbImg, const string& outputDir, const string& prefix, const string& indexName) {
-	if (rgbImg.empty() || indexImg.empty()) return;
+	cv::Mat applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const string& outputDir, const string& prefix, const string& indexName, const map<int, Mat>& bands) {
+	if (rgbImg.empty() || indexImg.empty()) return Mat();
+	
 	Mat hsv; cvtColor(rgbImg, hsv, COLOR_BGR2HSV);
-	Mat green_mask; inRange(hsv, Scalar(40, 40, 40), Scalar(90, 255, 255), green_mask);
-	if (indexImg.size() == green_mask.size()) indexImg.setTo(0, green_mask == 0);
+	Mat hsv_mask; inRange(hsv, Scalar(35, 40, 40), Scalar(90, 255, 255), hsv_mask);
+	
+	Mat combined_mask = hsv_mask.clone();
+	
+	if (bands.count(5)) {
+		Mat NIR = bands.at(5).clone();
+		if (NIR.empty()) return combined_mask;
+		
+		Scalar meanVal = mean(NIR);
+		double minVal, maxVal;
+		minMaxLoc(NIR, &minVal, &maxVal);
+		
+		if (NIR.channels() > 1 || NIR.depth() != CV_8U || maxVal > 200) {
+			gLog << "    Warning: Band 5 has unexpected properties (channels=" << NIR.channels() << ", depth=" << NIR.depth() << ", max=" << maxVal << "). Using HSV only." << endl;
+		} else {
+			cv::resize(NIR, NIR, hsv_mask.size());
+			threshold(NIR, NIR, 50, 255, THRESH_BINARY);
+			
+			Mat kernel = getStructuringElement(MORPH_ELLIPSE, Size(5, 5));
+			dilate(NIR, NIR, kernel, Point(-1, -1), 2);
+			erode(NIR, NIR, kernel, Point(-1, -1), 2);
+			
+			bitwise_or(hsv_mask, NIR, combined_mask);
+		}
+	} else {
+		Mat kernel = getStructuringElement(MORPH_ELLIPSE, Size(5, 5));
+		dilate(hsv_mask, hsv_mask, kernel, Point(-1, -1), 1);
+		erode(hsv_mask, hsv_mask, kernel, Point(-1, -1), 1);
+		combined_mask = hsv_mask;
+	}
+	
+	Mat kernel = getStructuringElement(MORPH_ELLIPSE, Size(3, 3));
+	dilate(combined_mask, combined_mask, kernel, Point(-1, -1), 2);
+	
+	if (indexImg.size() == combined_mask.size()) {
+		indexImg.setTo(0, combined_mask == 0);
+	}
+	
+	return combined_mask;
 }
 
 void exportVegIndexCsv(const string& outPath, const vector<string>& requestedIndices, const map<string, map<string, double>>& averages) {

@@ -556,7 +556,8 @@ int main(int argc, char** argv) {
 
 			// Apply green mask if RGB image (band 0) is available
 			if (alignedBands.count(0)) {
-				applyGreenMask(indexImg, alignedBands[0], vegidxDir, prefix, vegIdx);
+				Mat greenMask = applyGreenMask(indexImg, alignedBands[0], vegidxDir, prefix, vegIdx, alignedBands);
+				imwrite(vegidxDir + "/" + prefix + "_green_mask.tif", greenMask);
 			}
 
 			// Calculate average (excluding 0/masked pixels)
