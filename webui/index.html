@@ -112,7 +112,7 @@
 					<label class="block font-medium text-gray-700 w-36 my-2">Vegetation Indices:</label>
 					<div class="flex items-center" x-show="config.autoRadio && config.doRadio">
 						<label class="block text-gray-700 w-36 text-xs">Green centroid radius</label>
-						<input type="number" x-model="config.greenCentroidRadius" class="mt-1 block p-2 border text-xs w-20 lg:w-24 xl:w-48 2xl:w-96">
+						<input type="text" x-model="config.greenCentroidRadius" class="mt-1 block p-2 border text-xs w-20 lg:w-24 xl:w-48 2xl:w-96">
 						<p class="ml-2 mt-1 text-xs text-gray-500">(px)</br>0=disabled</p>
 					</div>
 					<div class="space-x-2 space-y-2 text-sm block">
@@ -286,7 +286,7 @@
 					doRadio: true,
 					autoRadio: true,
 					autoRadioThickness: 10,
-					greenCentroidRadius: 300,
+					greenCentroidRadius: '500,400',
 					optimize: true,
 					calc: {
 						NDVI: true,
@@ -331,7 +331,7 @@
 					if (this.config.radioTemplatePath) cmd += ` --template ${this.config.radioTemplatePath}`;
 					if (this.config.optimize) cmd += ' --optimize';
 
-					if (this.config.greenCentroidRadius > 0) cmd += ` --green-centroid-radius ${this.config.greenCentroidRadius}`;
+					if (this.config.greenCentroidRadius) cmd += ` --green-centroid-radius ${this.config.greenCentroidRadius}`;
 					const indices = Object.keys(this.config.calc).filter(k => this.config.calc[k]).map(k => k.toLowerCase());
 					if (indices.length > 0) {
 						cmd += ` --veg-idx ${indices.join(',')}`;
@@ -351,7 +351,7 @@
 						const payload = {
 							...this.config,
 							autoRadioThickness: this.config.autoRadio ? parseInt(this.config.autoRadioThickness) : -1,
-							greenCentroidRadius: this.config.greenCentroidRadius ? parseInt(this.config.greenCentroidRadius) : 0
+							greenCentroidRadius: this.config.greenCentroidRadius || 0
 						};
 
 						const response = await fetch('/run', {

@@ -65,7 +65,8 @@ int main(int argc, char** argv) {
 	Point radioInterval(40, 0);
 	vector<string> requestedVegIndices = {"ndvi"};
 	// Focus radius (pixels) for green centroid masking. 0==disabled
-	int greenCentroidRadius = 0;
+	int greenCentroidRadiusX = 0;
+	int greenCentroidRadiusY = 0;
 
 	// Check for GUI flag first
 	gLog << "argv[1]: " << argv[1] << endl;
@@ -195,19 +196,31 @@ int main(int argc, char** argv) {
 					requestedVegIndices.push_back(segment);
 				}
 				i++;
-			} else {
-				args.push_back(arg);
-			}
-		}
-
-		// Additional parsing: extract green-centroid-radius/-gcr if provided (fallback)
-		for (int i = 1; i < argc; ++i) {
-			string arg = argv[i];
-			if (arg == "--green-centroid-radius" || arg == "-gcr") {
+			} else if (arg == "--green-centroid-radius" || arg == "-gcr") {
 				if (i + 1 < argc && argv[i+1][0] != '-') {
-					greenCentroidRadius = stoi(argv[i+1]);
+					string val = argv[i+1];
+					auto commaPos = val.find(',');
+					if (commaPos != string::npos) {
+						string sx = val.substr(0, commaPos);
+						string sy = val.substr(commaPos + 1);
+						try {
+							greenCentroidRadiusX = stoi(sx);
+							greenCentroidRadiusY = stoi(sy);
+						} catch (...) {
+							// ignore parse error, keep defaults
+						}
+					} else {
+						try {
+							int r = stoi(val);
+							greenCentroidRadiusX = greenCentroidRadiusY = r;
+						} catch (...) {
+							// ignore
+						}
+					}
 					i++;
 				}
+			} else {
+				args.push_back(arg);
 			}
 		}
 
@@ -570,7 +583,7 @@ int main(int argc, char** argv) {
 
 			// Apply green mask if RGB image (band 0) is available
 			if (alignedBands.count(0)) {
-				Mat greenMask = applyGreenMask(indexImg, alignedBands[0], vegidxDir, prefix, vegIdx, alignedBands, greenCentroidRadius);
+				Mat greenMask = applyGreenMask(indexImg, alignedBands[0], vegidxDir, prefix, vegIdx, alignedBands, greenCentroidRadiusX, greenCentroidRadiusY);
 				// Create RGB composite: overlay semi-transparent green where mask is true
 				Mat rgbImg = alignedBands[0];
 				Mat rgb_u8;

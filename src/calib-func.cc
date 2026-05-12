@@ -648,10 +648,10 @@ Mat calculateVegIndex(const string& type, const map<int, Mat>& bands) {
 	return result;
 }
 
-cv::Mat applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const string& outputDir, const string& prefix, const string& indexName, const map<int, Mat>& bands, int greenCentroidRadius) {
+cv::Mat applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const string& outputDir, const string& prefix, const string& indexName, const map<int, Mat>& bands, int greenCentroidRadiusX, int greenCentroidRadiusY) {
 	if (rgbImg.empty() || indexImg.empty()) return Mat();
 
-	gLog << "  INFO: greenCentroidRadius: " << greenCentroidRadius << endl;
+	gLog << "  INFO: greenCentroidRadiusX=" << greenCentroidRadiusX << ", Y=" << greenCentroidRadiusY << endl;
 
 	// Convert BGR to float channels
 	Mat rgbf; rgbImg.convertTo(rgbf, CV_32F);
@@ -759,16 +759,16 @@ cv::Mat applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const string& o
 	Mat kernelDilate = getStructuringElement(MORPH_ELLIPSE, Size(3, 3));
 	dilate(combined_mask, combined_mask, kernelDilate, Point(-1, -1), 1);
 
-	// 4. FOCUS MASK: either circular centroid radius (preferred) or small border margin fallback
-	if (greenCentroidRadius > 0) {
+	// 4. FOCUS MASK: either elliptical centroid radius (preferred) or small border margin fallback
+	if (greenCentroidRadiusX > 0 || greenCentroidRadiusY > 0) {
 		int w = combined_mask.cols; int h = combined_mask.rows;
 		Point center(w/2, h/2);
-		Mat circleMask = Mat::zeros(combined_mask.size(), CV_8U);
-		int r = greenCentroidRadius;
-		// clamp radius to image bounds
-		r = std::max(0, std::min(r, std::max(w, h)));
-		circle(circleMask, center, r, Scalar(255), FILLED);
-		bitwise_and(combined_mask, circleMask, combined_mask);
+		Mat ellipseMask = Mat::zeros(combined_mask.size(), CV_8U);
+		int rx = greenCentroidRadiusX > 0 ? std::min(greenCentroidRadiusX, w) : std::min(w/2, w);
+		int ry = greenCentroidRadiusY > 0 ? std::min(greenCentroidRadiusY, h) : std::min(h/2, h);
+		// OpenCV ellipse axes are half-lengths (rx, ry)
+		ellipse(ellipseMask, center, Size(rx, ry), 0.0, 0.0, 360.0, Scalar(255), FILLED);
+		bitwise_and(combined_mask, ellipseMask, combined_mask);
 	} else {
 		// small rectangular margin (5%) as a conservative fallback
 		int w = combined_mask.cols; int h = combined_mask.rows;

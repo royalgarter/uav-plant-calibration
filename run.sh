@@ -67,25 +67,25 @@ case "$1" in
     ###############################################################################################
     
     "example:calib")
-        run_cmd ./calib .input .output --optimize --green-centroid-radius 400
+        run_cmd ./calib .input .output --optimize --green-centroid-radius 450,400
         ;;
     "example:calib-radio")
-        run_cmd ./calib .input .output --optimize --green-centroid-radius 400 --radio 0,25
+        run_cmd ./calib .input .output --optimize --green-centroid-radius 500,400 --radio 0,25
         ;;
     "example:calib-auto")
-        run_cmd ./calib .input .output --optimize --green-centroid-radius 400 --radio --auto 10 --ref .input_ref/radiometric_reference.csv --template .input_ref/radiometric_board.jpg
+        run_cmd ./calib .input .output --optimize --green-centroid-radius 500,400 --radio --auto 10 --ref .input_ref/radiometric_reference.csv --template .input_ref/radiometric_board.jpg
         ;;
     
     ###############################################################################################
 
     "example:calib-win")
-        run_cmd ./window_build/calib-wingui.exe .input .output --optimize --green-centroid-radius 400
+        run_cmd ./window_build/calib-wingui.exe .input .output --optimize --green-centroid-radius 500,400
         ;;
     "example:calib-win-radio")
-        run_cmd ./window_build/calib-wingui.exe .input .output --optimize --green-centroid-radius 400 --radio 0,25
+        run_cmd ./window_build/calib-wingui.exe .input .output --optimize --green-centroid-radius 500,400 --radio 0,25
         ;;
     "example:calib-win-auto")
-        run_cmd ./window_build/calib-wingui.exe .input .output --optimize --green-centroid-radius 400 --radio 0,25 --auto 10
+        run_cmd ./window_build/calib-wingui.exe .input .output --optimize --green-centroid-radius 500,400 --radio 0,25 --auto 10
         ;;
     "example:calib-win-gui")
         run_cmd ./window_build/calib-wingui.exe --gui

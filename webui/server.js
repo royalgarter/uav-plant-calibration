@@ -104,6 +104,7 @@ function executeCalibration(config, res) {
 		autoRadioThickness = -1,
 		radioRefFile = '',
 		radioTemplatePath = '',
+		greenCentroidRadius = '',
 		optimize = false,
 		calc = {}
 	} = config;
@@ -134,7 +135,10 @@ function executeCalibration(config, res) {
 		args.push('--optimize');
 	}
 
-	// Handle vegetation indices
+	if (greenCentroidRadius) {
+		args.push('--green-centroid-radius', greenCentroidRadius);
+	}
+
 	const indices = Object.keys(calc).filter(k => calc[k]).map(k => k.toLowerCase());
 	if (indices.length > 0) {
 		args.push('--veg-idx', indices.join(','));
