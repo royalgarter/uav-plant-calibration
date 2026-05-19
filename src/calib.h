@@ -147,8 +147,17 @@ cv::Mat applyRadiometricCalibration(const cv::Mat& img, RadioCoeffs coeffs);
 void exportRadiometricCsv(const std::string& outPath, const std::map<std::string, GroupData>& allGroups);
 
 // Vegetation Indices
+struct GreenMaskResults {
+	cv::Mat mask;
+	cv::Point2f centroid = cv::Point2f(0, 0);
+	std::vector<cv::Point> convexHull;
+	cv::RotatedRect ellipse;
+	double totalArea = 0;
+	bool valid = false;
+};
+
 cv::Mat calculateVegIndex(const std::string& type, const std::map<int, cv::Mat>& bands);
-cv::Mat applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const std::string& outputDir, const std::string& prefix, const std::string& indexName, const std::map<int, cv::Mat>& bands, int greenCentroidRadiusX = 0, int greenCentroidRadiusY = 0);
+GreenMaskResults applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const std::string& outputDir, const std::string& prefix, const std::string& indexName, const std::map<int, cv::Mat>& bands, int greenCentroidRadiusX = 0, int greenCentroidRadiusY = 0);
 void exportVegIndexCsv(const std::string& outPath, const std::vector<std::string>& requestedIndices, const std::map<std::string, std::map<std::string, double>>& averages);
 
 #endif // CALIB_H

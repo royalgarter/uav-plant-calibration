@@ -583,7 +583,9 @@ int main(int argc, char** argv) {
 
 			// Apply green mask if RGB image (band 0) is available
 			if (alignedBands.count(0)) {
-				Mat greenMask = applyGreenMask(indexImg, alignedBands[0], vegidxDir, prefix, vegIdx, alignedBands, greenCentroidRadiusX, greenCentroidRadiusY);
+				GreenMaskResults res = applyGreenMask(indexImg, alignedBands[0], vegidxDir, prefix, vegIdx, alignedBands, greenCentroidRadiusX, greenCentroidRadiusY);
+				Mat greenMask = res.mask;
+
 				// Create RGB composite: overlay semi-transparent green where mask is true
 				Mat rgbImg = alignedBands[0];
 				Mat rgb_u8;
@@ -594,6 +596,24 @@ int main(int argc, char** argv) {
 				addWeighted(rgb_u8, 0.5, overlay, 0.5, 0.0, blended);
 				Mat composite = rgb_u8.clone();
 				blended.copyTo(composite, greenMask);
+
+				// Draw extraction results for verification
+				if (res.valid) {
+					// Draw Convex Hull (Yellow)
+					if (!res.convexHull.empty()) {
+						vector<vector<Point>> hulls = { res.convexHull };
+						drawContours(composite, hulls, 0, Scalar(0, 255, 255), 2);
+					}
+					// Draw Ellipse (Red)
+					if (res.ellipse.size.width > 0) {
+						ellipse(composite, res.ellipse, Scalar(0, 0, 255), 2);
+					}
+					// Draw Centroid (Blue Cross)
+					int cs = 10;
+					line(composite, Point(res.centroid.x - cs, res.centroid.y), Point(res.centroid.x + cs, res.centroid.y), Scalar(255, 0, 0), 2);
+					line(composite, Point(res.centroid.x, res.centroid.y - cs), Point(res.centroid.x, res.centroid.y + cs), Scalar(255, 0, 0), 2);
+				}
+
 				imwrite(vegidxDir + "/" + prefix + "_green_mask.tif", composite);
 			}
 

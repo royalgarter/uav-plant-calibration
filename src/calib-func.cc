@@ -624,6 +624,8 @@ void exportRadiometricCsv(const string& outPath, const map<string, GroupData>& a
 // --- VEGETATION INDICES ---
 
 Mat calculateVegIndex(const string& type, const map<int, Mat>& bands) {
+	// https://github.com/px39n/Awesome-Vegetation-Index
+	
 	Mat nir, red, green, blue, re;
 	if (bands.count(5)) bands.at(5).convertTo(nir, CV_32F);
 	else if (bands.count(4)) bands.at(4).convertTo(nir, CV_32F);
@@ -648,8 +650,9 @@ Mat calculateVegIndex(const string& type, const map<int, Mat>& bands) {
 	return result;
 }
 
-cv::Mat applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const string& outputDir, const string& prefix, const string& indexName, const map<int, Mat>& bands, int greenCentroidRadiusX, int greenCentroidRadiusY) {
-	if (rgbImg.empty() || indexImg.empty()) return Mat();
+GreenMaskResults applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const string& outputDir, const string& prefix, const string& indexName, const map<int, Mat>& bands, int greenCentroidRadiusX, int greenCentroidRadiusY) {
+	GreenMaskResults results;
+	if (rgbImg.empty() || indexImg.empty()) return results;
 
 	gLog << "  INFO: greenCentroidRadiusX=" << greenCentroidRadiusX << ", Y=" << greenCentroidRadiusY << endl;
 
@@ -660,8 +663,6 @@ cv::Mat applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const string& o
 	const float eps = 1e-6f;
 
 	// 1. MODIFIED VEGETATION INDEX:
-    // Instead of Excess Green (2G-R-B), we use an index that rewards BOTH Green and Red (Yellow = Green + Red)
-    // while heavily penalizing Blue (which is present in the gray concrete shadows).
 	Mat PlantIndex = G + R - 2.0f * B;
 
 	// Normalize PlantIndex for thresholding
@@ -687,7 +688,7 @@ cv::Mat applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const string& o
 				cv::resize(NIR, NIR, PlantIndex8.size());
 				Mat NIRf; NIR.convertTo(NIRf, CV_32F);
 
-                if (NIRf.total() > 0) {
+				if (NIRf.total() > 0) {
 					Mat flat = NIRf.reshape(1, (int)NIRf.total());
 					Mat sorted;
 					cv::sort(flat, sorted, SORT_EVERY_COLUMN + SORT_ASCENDING);
@@ -737,40 +738,116 @@ cv::Mat applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const string& o
 		combined_mask = maskPlantIndex;
 	}
 
-	// 2. EXPANDED HSV RANGE:
-    // Lowered Hue from 35 to 18 to capture yellow and brownish-green distressed leaves.
-    // Lowered Saturation from 40 to 25 because distressed leaves lose their vivid color.
+	// 2. HSV RANGE
 	Mat hsv; cvtColor(rgbImg, hsv, COLOR_BGR2HSV);
 	Mat hsv_mask;
-    inRange(hsv, Scalar(18, 25, 30), Scalar(90, 255, 255), hsv_mask);
+	inRange(hsv, Scalar(18, 25, 30), Scalar(90, 255, 255), hsv_mask);
 
-    bitwise_and(combined_mask, hsv_mask, combined_mask);
+	bitwise_and(combined_mask, hsv_mask, combined_mask);
 
-	// 3. GENTLE MORPHOLOGY:
-    // Using a median blur instead of MORPH_OPEN to remove salt-and-pepper concrete noise
-    // without erasing the very thin, dying stems of the plant.
-    medianBlur(combined_mask, combined_mask, 3);
-
-    // Smaller closure to bridge gaps in thin leaves
+	// 3. MORPHOLOGY
+	medianBlur(combined_mask, combined_mask, 3);
 	Mat kernelClose = getStructuringElement(MORPH_ELLIPSE, Size(3, 3));
 	morphologyEx(combined_mask, combined_mask, MORPH_CLOSE, kernelClose);
-
-    // Slight dilation to ensure boundary pixels of leaves are kept
 	Mat kernelDilate = getStructuringElement(MORPH_ELLIPSE, Size(3, 3));
 	dilate(combined_mask, combined_mask, kernelDilate, Point(-1, -1), 1);
 
-	// 4. FOCUS MASK: either elliptical centroid radius (preferred) or small border margin fallback
+	// 4. STATISTICAL OUTLIER FILTERING & METRICS CALCULATION
+	vector<vector<Point>> contours;
+	findContours(combined_mask, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+
+	struct ContourData {
+		int index;
+		double area;
+		Point2f centroid;
+	};
+
+	vector<ContourData> validContours;
+	double tempTotalArea = 0;
+	Point2f tempCentroid(0, 0);
+
+	// --- PASS 1: Gather valid blobs and compute Temporary Centroid ---
+	for (int i = 0; i < contours.size(); i++) {
+		double area = contourArea(contours[i]);
+		if (area > 15) { // Filter out microscopic 1-2 pixel noise right away
+			Moments mu = moments(contours[i]);
+			Point2f centroid(mu.m10 / (mu.m00 + 1e-6), mu.m01 / (mu.m00 + 1e-6));
+			
+			validContours.push_back({i, area, centroid});
+			tempTotalArea += area;
+			tempCentroid += centroid * (float)area;
+		}
+	}
+
+	Mat filtered_mask = Mat::zeros(combined_mask.size(), CV_8U);
+	results.valid = false;
+
+	if (tempTotalArea > 0) {
+		// Finalize temporary centroid
+		tempCentroid /= (float)tempTotalArea;
+
+		// Calculate the area-weighted Standard Deviation of the plant's spread
+		double variance_dist = 0;
+		for (const auto& cd : validContours) {
+			double dist = norm(cd.centroid - tempCentroid);
+			variance_dist += cd.area * (dist * dist);
+		}
+		double stddev_dist = sqrt(variance_dist / tempTotalArea);
+
+		// Dynamic max distance threshold: 
+		// Allow blobs within 3 standard deviations, but ensure a minimum radius 
+		// (e.g., 10% of image width) so we don't over-crop very compact plants.
+		double max_allowed_dist = std::max(3.0 * stddev_dist, (double)(combined_mask.cols * 0.10));
+
+		// --- PASS 2: Filter Outliers and Calculate Final Metrics ---
+		vector<Point> allPoints;
+		double finalTotalArea = 0;
+		Point2f finalCentroid(0, 0);
+
+		for (const auto& cd : validContours) {
+			double dist = norm(cd.centroid - tempCentroid);
+			
+			// If blob is within the acceptable spread, keep it
+			if (dist <= max_allowed_dist) {
+				drawContours(filtered_mask, contours, cd.index, Scalar(255), FILLED);
+				
+				for (const auto& p : contours[cd.index]) {
+					allPoints.push_back(p);
+				}
+				
+				finalTotalArea += cd.area;
+				finalCentroid += cd.centroid * (float)cd.area;
+			}
+		}
+
+		// Apply final calculations
+		if (finalTotalArea > 0) {
+			combined_mask = filtered_mask;
+			results.totalArea = finalTotalArea;
+			results.centroid = finalCentroid / (float)(finalTotalArea + 1e-6);
+			results.valid = true;
+
+			if (allPoints.size() >= 5) {
+				convexHull(allPoints, results.convexHull);
+				results.ellipse = fitEllipse(allPoints);
+			}
+		} else {
+			combined_mask = Mat::zeros(combined_mask.size(), CV_8U);
+		}
+	} else {
+		combined_mask = Mat::zeros(combined_mask.size(), CV_8U);
+	}
+
+	// 5. FOCUS MASK
 	if (greenCentroidRadiusX > 0 || greenCentroidRadiusY > 0) {
 		int w = combined_mask.cols; int h = combined_mask.rows;
-		Point center(w/2, h/2);
+		Point center(w / 2, h / 2);
 		Mat ellipseMask = Mat::zeros(combined_mask.size(), CV_8U);
-		int rx = greenCentroidRadiusX > 0 ? std::min(greenCentroidRadiusX, w) : std::min(w/2, w);
-		int ry = greenCentroidRadiusY > 0 ? std::min(greenCentroidRadiusY, h) : std::min(h/2, h);
-		// OpenCV ellipse axes are half-lengths (rx, ry)
+		int rx = greenCentroidRadiusX > 0 ? std::min(greenCentroidRadiusX, w) : std::min(w / 2, w);
+		int ry = greenCentroidRadiusY > 0 ? std::min(greenCentroidRadiusY, h) : std::min(h / 2, h);
 		ellipse(ellipseMask, center, Size(rx, ry), 0.0, 0.0, 360.0, Scalar(255), FILLED);
 		bitwise_and(combined_mask, ellipseMask, combined_mask);
 	} else {
-		// small rectangular margin (5%) as a conservative fallback
 		int w = combined_mask.cols; int h = combined_mask.rows;
 		int marginX = std::max(1, (int)std::round(w * 0.05));
 		int marginY = std::max(1, (int)std::round(h * 0.05));
@@ -780,12 +857,13 @@ cv::Mat applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const string& o
 		bitwise_and(combined_mask, borderMask, combined_mask);
 	}
 
-	// Apply mask to index image (zero-out background)
+	// Apply mask to index image
 	if (indexImg.size() == combined_mask.size()) {
 		indexImg.setTo(0, combined_mask == 0);
 	}
 
-	return combined_mask;
+	results.mask = combined_mask;
+	return results;
 }
 
 void exportVegIndexCsv(const string& outPath, const vector<string>& requestedIndices, const map<string, map<string, double>>& averages) {
