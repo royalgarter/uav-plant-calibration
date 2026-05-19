@@ -626,7 +626,7 @@ void exportRadiometricCsv(const string& outPath, const map<string, GroupData>& a
 Mat calculateVegIndex(const string& type, const map<int, Mat>& bands) {
 	// https://github.com/px39n/Awesome-Vegetation-Index
 	
-	Mat nir, red, green, blue, re;
+	Mat nir, red, green, blue, re, swir1, swir2;
 	if (bands.count(5)) bands.at(5).convertTo(nir, CV_32F);
 	else if (bands.count(4)) bands.at(4).convertTo(nir, CV_32F);
 	if (bands.count(3)) bands.at(3).convertTo(red, CV_32F);
@@ -636,15 +636,146 @@ Mat calculateVegIndex(const string& type, const map<int, Mat>& bands) {
 	if (bands.count(1)) bands.at(1).convertTo(blue, CV_32F);
 	if (bands.count(4)) bands.at(4).convertTo(re, CV_32F);
 	else if (bands.count(3) && !bands.count(4)) bands.at(3).convertTo(re, CV_32F);
+	if (bands.count(6)) bands.at(6).convertTo(swir1, CV_32F);
+	if (bands.count(7)) bands.at(7).convertTo(swir2, CV_32F);
 
 	Mat result;
-	if (type == "ndvi") { if (nir.empty() || red.empty()) return Mat(); result = (nir - red) / (nir + red + 1e-6f); }
-	else if (type == "evi") { if (nir.empty() || red.empty() || blue.empty()) return Mat(); result = 2.5f * (nir - red) / (nir + 6.0f * red - 7.5f * blue + 1.0f); }
-	else if (type == "gndvi") { if (nir.empty() || green.empty()) return Mat(); result = (nir - green) / (nir + green + 1e-6f); }
-	else if (type == "ndre") { if (nir.empty() || re.empty()) return Mat(); result = (nir - re) / (nir + re + 1e-6f); }
-	else if (type == "rdvi") { if (nir.empty() || red.empty()) return Mat(); Mat sum_val = nir + red; sqrt(sum_val, sum_val); result = (nir - red) / (sum_val + 1e-6f); }
-	else if (type == "osavi") { if (nir.empty() || red.empty()) return Mat(); result = 1.16f * (nir - red) / (nir + red + 0.16f); }
-	else if (type == "msr") { if (nir.empty() || red.empty()) return Mat(); Mat ratio = nir / (red + 1e-6f); Mat sqrt_ratio; sqrt(ratio, sqrt_ratio); result = (ratio - 1.0f) / (sqrt_ratio + 1.0f + 1e-6f); }
+	const float eps = 1e-6f;
+
+	if (type == "ndvi") { 
+		if (nir.empty() || red.empty()) return Mat(); 
+		result = (nir - red) / (nir + red + eps); 
+	}
+	else if (type == "sr" || type == "rvi") { 
+		if (nir.empty() || red.empty()) return Mat(); 
+		result = nir / (red + eps); 
+	}
+	else if (type == "rsr") {
+		if (nir.empty() || red.empty() || swir1.empty()) return Mat();
+		double minV, maxV; minMaxLoc(swir1, &minV, &maxV);
+		result = (nir / (red + eps)) * (1.0f - (swir1 - (float)minV) / ((float)maxV - (float)minV + eps));
+	}
+	else if (type == "arvi") {
+		if (nir.empty() || red.empty() || blue.empty()) return Mat();
+		Mat rb = red - 1.0f * (blue - red);
+		result = (nir - rb) / (nir + rb + eps);
+	}
+	else if (type == "afri1.6") {
+		if (nir.empty() || swir1.empty()) return Mat();
+		result = (nir - 0.66f * swir1) / (nir + 0.66f * swir1 + eps);
+	}
+	else if (type == "afri2.1") {
+		if (nir.empty() || swir2.empty()) return Mat();
+		result = (nir - 0.5f * swir2) / (nir + 0.5f * swir2 + eps);
+	}
+	else if (type == "vari") {
+		if (green.empty() || red.empty() || blue.empty()) return Mat();
+		result = (green - red) / (green + red - blue + eps);
+	}
+	else if (type == "tvi") {
+		if (nir.empty() || green.empty() || red.empty()) return Mat();
+		result = 0.5f * (120.0f * (nir - green) - 200.0f * (red - green));
+	}
+	else if (type == "msarvi") {
+		if (nir.empty() || red.empty() || blue.empty()) return Mat();
+		Mat rb = red - 1.0f * (blue - red);
+		Mat term = (2.0f * nir + 1.0f);
+		Mat sq; pow(term, 2, sq);
+		Mat root; cv::sqrt(sq - 8.0f * (nir - rb), root);
+		result = (term - root) / 2.0f;
+	}
+	else if (type == "gemi") {
+		if (nir.empty() || red.empty()) return Mat();
+		Mat eta = (2.0f * (nir.mul(nir) - red.mul(red)) + 1.5f * nir + 0.5f * red) / (nir + red + 0.5f + eps);
+		result = eta.mul(1.0f - 0.25f * eta) - ((red - 0.125f) / (1.0f - red + eps));
+	}
+	else if (type == "evi") { 
+		if (nir.empty() || red.empty() || blue.empty()) return Mat(); 
+		result = 2.5f * (nir - red) / (nir + 6.0f * red - 7.5f * blue + 1.0f); 
+	}
+	else if (type == "evi2") {
+		if (nir.empty() || red.empty()) return Mat();
+		result = 2.5f * (nir - red) / (nir + 2.4f * red + 1.0f);
+	}
+	else if (type == "mcari") {
+		if (re.empty() || red.empty() || green.empty()) return Mat();
+		result = ((re - red) - 0.2f * (re - green)).mul(re / (red + eps));
+	}
+	else if (type == "osavi") { 
+		if (nir.empty() || red.empty()) return Mat(); 
+		result = 1.16f * (nir - red) / (nir + red + 0.16f); 
+	}
+	else if (type == "savi") {
+		if (nir.empty() || red.empty()) return Mat();
+		float L = 0.5f;
+		result = (1.0f + L) * (nir - red) / (nir + red + L);
+	}
+	else if (type == "msavi") {
+		if (nir.empty() || red.empty()) return Mat();
+		Mat term = (2.0f * nir + 1.0f);
+		Mat sq; pow(term, 2, sq);
+		Mat root; cv::sqrt(sq - 8.0f * (nir - red), root);
+		result = (term - root) / 2.0f;
+	}
+	else if (type == "dvi") {
+		if (nir.empty() || red.empty()) return Mat();
+		result = nir - red;
+	}
+	else if (type == "nri") {
+		if (red.empty() || green.empty()) return Mat();
+		result = (red - green) / (red + green + eps);
+	}
+	else if (type == "ndre") { 
+		if (nir.empty() || re.empty()) return Mat(); 
+		result = (nir - re) / (nir + re + eps); 
+	}
+	else if (type == "gndvi") { 
+		if (nir.empty() || green.empty()) return Mat(); 
+		result = (nir - green) / (nir + green + eps); 
+	}
+	else if (type == "cigreen") {
+		if (nir.empty() || green.empty()) return Mat();
+		result = (nir / (green + eps)) - 1.0f;
+	}
+	else if (type == "cire") {
+		if (nir.empty() || re.empty()) return Mat();
+		result = (nir / (re + eps)) - 1.0f;
+	}
+	else if (type == "ipvi") {
+		if (nir.empty() || red.empty()) return Mat();
+		result = nir / (nir + red + eps);
+	}
+	else if (type == "rdvi") { 
+		if (nir.empty() || red.empty()) return Mat(); 
+		Mat sum_val; cv::sqrt(nir + red, sum_val); 
+		result = (nir - red) / (sum_val + eps); 
+	}
+	else if (type == "wdrvi") {
+		if (nir.empty() || red.empty()) return Mat();
+		float alpha = 0.1f;
+		result = (alpha * nir - red) / (alpha * nir + red + eps);
+	}
+	else if (type == "wdvi") {
+		if (nir.empty() || red.empty()) return Mat();
+		float a = 1.0f; // default soil line slope
+		result = nir - a * red;
+	}
+	else if (type == "tsavi") {
+		if (nir.empty() || red.empty()) return Mat();
+		float a = 1.0f, b = 0.0f, X = 0.08f;
+		result = (a * (nir - a * red - b)) / (red + a * nir - a * b + X * (1.0f + a * a) + eps);
+	}
+	else if (type == "atsavi") {
+		if (nir.empty() || red.empty()) return Mat();
+		float a = 1.0f, b = 0.0f, X = 0.08f;
+		result = (a * (nir - a * red - b)) / (a * nir + red - a * b + X * (1.0f + a * a) + eps);
+	}
+	else if (type == "msr") { 
+		if (nir.empty() || red.empty()) return Mat(); 
+		Mat ratio = nir / (red + eps); 
+		Mat sqrt_ratio; cv::sqrt(ratio, sqrt_ratio); 
+		result = (ratio - 1.0f) / (sqrt_ratio + 1.0f + eps); 
+	}
 
 	if (!result.empty()) { threshold(result, result, 0, 0, THRESH_TOZERO); threshold(result, result, 1, 1, THRESH_TRUNC); }
 	return result;

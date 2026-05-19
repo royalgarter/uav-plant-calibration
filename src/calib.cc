@@ -30,7 +30,9 @@ void showUsage() {
 	cout << "                Optional: --optimize <downscale>,<iterations>,<epsilon>" << endl;
 	cout << "                Default: --optimize 2,50,1e-4" << endl;
 	cout << "  --veg-idx     Comma-separated list of vegetation indices to calculate." << endl;
-	cout << "                Supported: ndvi, evi, gndvi, ndre, rdvi, osavi, msr" << endl;
+	cout << "                Supported: ndvi, sr, rsr, arvi, afri1.6, afri2.1, vari, tvi, msarvi, gemi," << endl;
+	cout << "                           evi, evi2, mcari, osavi, savi, msavi, dvi, nri, ndre, gndvi," << endl;
+	cout << "                           cigreen, cire, ipvi, rdvi, wdrvi, wdvi, tsavi, atsavi, msr" << endl;
 	cout << "                Default: ndvi" << endl;
 	cout << "  --green-centroid-radius, -gcr  Radius in pixels to focus green mask around image center (default: 0 = disabled)" << endl;
 #ifdef WINGUI
