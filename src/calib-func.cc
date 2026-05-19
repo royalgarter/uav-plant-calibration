@@ -88,57 +88,57 @@ void parseXmlMetadata(const string& xml, ImageInfo& info) {
 }
 
 string getXmpFromJpeg(const string& filename) {
-    FILE* f = fopen(filename.c_str(), "rb");
-    if (!f) return "";
+	FILE* f = fopen(filename.c_str(), "rb");
+	if (!f) return "";
 
-    uint8_t buf[256];
-    // Read SOI
-    if (fread(buf, 1, 2, f) != 2 || buf[0] != 0xFF || buf[1] != 0xD8) {
-        fclose(f);
-        return "";
-    }
+	uint8_t buf[256];
+	// Read SOI
+	if (fread(buf, 1, 2, f) != 2 || buf[0] != 0xFF || buf[1] != 0xD8) {
+		fclose(f);
+		return "";
+	}
 
-    while (true) {
-        if (fread(buf, 1, 2, f) != 2) break; // Read marker
-        if (buf[0] != 0xFF) break; // Not a marker
-        uint8_t marker = buf[1];
+	while (true) {
+		if (fread(buf, 1, 2, f) != 2) break; // Read marker
+		if (buf[0] != 0xFF) break; // Not a marker
+		uint8_t marker = buf[1];
 
-        // Read length
-        uint8_t lenBuf[2];
-        if (fread(lenBuf, 1, 2, f) != 2) break;
-        uint16_t len = (lenBuf[0] << 8) | lenBuf[1];
-        uint16_t contentLen = len - 2;
+		// Read length
+		uint8_t lenBuf[2];
+		if (fread(lenBuf, 1, 2, f) != 2) break;
+		uint16_t len = (lenBuf[0] << 8) | lenBuf[1];
+		uint16_t contentLen = len - 2;
 
-        if (marker == 0xE1) { // APP1
-             // Check for XMP header
-             // "http://ns.adobe.com/xap/1.0/\0" is 29 bytes
-             if (contentLen > 29) {
-                 char header[29];
-                 if (fread(header, 1, 29, f) != 29) break;
-                 if (memcmp(header, "http://ns.adobe.com/xap/1.0/", 29) == 0) {
-                     // Found XMP
-                     string xmp;
-                     xmp.resize(contentLen - 29);
-                     if (fread(&xmp[0], 1, contentLen - 29, f) != contentLen - 29) break;
-                     fclose(f);
-                     return xmp;
-                 } else {
-                     // Not XMP, skip rest of segment
-                     fseek(f, contentLen - 29, SEEK_CUR);
-                 }
-             } else {
-                 fseek(f, contentLen, SEEK_CUR);
-             }
-        } else if (marker == 0xD9 || marker == 0xDA) {
-            // EOI or SOS - stop scanning
-            break;
-        } else {
-            // Skip other segments
-            fseek(f, contentLen, SEEK_CUR);
-        }
-    }
-    fclose(f);
-    return "";
+		if (marker == 0xE1) { // APP1
+			 // Check for XMP header
+			 // "http://ns.adobe.com/xap/1.0/\0" is 29 bytes
+			 if (contentLen > 29) {
+				 char header[29];
+				 if (fread(header, 1, 29, f) != 29) break;
+				 if (memcmp(header, "http://ns.adobe.com/xap/1.0/", 29) == 0) {
+					 // Found XMP
+					 string xmp;
+					 xmp.resize(contentLen - 29);
+					 if (fread(&xmp[0], 1, contentLen - 29, f) != contentLen - 29) break;
+					 fclose(f);
+					 return xmp;
+				 } else {
+					 // Not XMP, skip rest of segment
+					 fseek(f, contentLen - 29, SEEK_CUR);
+				 }
+			 } else {
+				 fseek(f, contentLen, SEEK_CUR);
+			 }
+		} else if (marker == 0xD9 || marker == 0xDA) {
+			// EOI or SOS - stop scanning
+			break;
+		} else {
+			// Skip other segments
+			fseek(f, contentLen, SEEK_CUR);
+		}
+	}
+	fclose(f);
+	return "";
 }
 
 ImageInfo parseMetadata(const string& filePath) {
@@ -279,7 +279,7 @@ Mat alignSIFTFallback(const Mat& refClahe, const Mat& targetClahe) {
 Mat contrastStretch(const Mat& src) {
 	double minVal, maxVal;
 	minMaxLoc(src, &minVal, &maxVal);
-	
+
 	Mat dst;
 	if (maxVal > minVal) {
 		src.convertTo(dst, CV_8U, 255.0 / (maxVal - minVal), -minVal * 255.0 / (maxVal - minVal));
@@ -322,7 +322,7 @@ bool loadRadiometricRefs(const string& path) {
 }
 
 void collectDnValues(const Mat& img, const Point& p56, const Point& p3, int boxSize,
-                     bool isRGB, vector<double>& dns_r, vector<double>& dns_g, vector<double>& dns_b) {
+					 bool isRGB, vector<double>& dns_r, vector<double>& dns_g, vector<double>& dns_b) {
 	dns_r.clear();
 	dns_g.clear();
 	dns_b.clear();
@@ -369,8 +369,8 @@ void onMouseRadio(int event, int x, int y, int flags, void* userdata) {
 	}
 }
 
-RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point interval, int autoDetectThickness, 
-                                  const string& radioDir, const string& templatePath) {
+RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point interval, int autoDetectThickness,
+								  const string& radioDir, const string& templatePath) {
 	RadioState state;
 	Mat display;
 	RadioCoeffs coeffs;
@@ -403,7 +403,7 @@ RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point i
 			for (double scale : scales) {
 				Mat scaledTempl;
 				resize(templ, scaledTempl, Size(), scale, scale);
-				
+
 				for (int rot = 0; rot < 4; ++rot) {
 					Mat rotTempl;
 					if (rot == 0) rotTempl = scaledTempl;
@@ -648,48 +648,143 @@ Mat calculateVegIndex(const string& type, const map<int, Mat>& bands) {
 	return result;
 }
 
-	cv::Mat applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const string& outputDir, const string& prefix, const string& indexName, const map<int, Mat>& bands) {
+cv::Mat applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const string& outputDir, const string& prefix, const string& indexName, const map<int, Mat>& bands, int greenCentroidRadiusX, int greenCentroidRadiusY) {
 	if (rgbImg.empty() || indexImg.empty()) return Mat();
-	
-	Mat hsv; cvtColor(rgbImg, hsv, COLOR_BGR2HSV);
-	Mat hsv_mask; inRange(hsv, Scalar(35, 40, 40), Scalar(90, 255, 255), hsv_mask);
-	
-	Mat combined_mask = hsv_mask.clone();
-	
+
+	gLog << "  INFO: greenCentroidRadiusX=" << greenCentroidRadiusX << ", Y=" << greenCentroidRadiusY << endl;
+
+	// Convert BGR to float channels
+	Mat rgbf; rgbImg.convertTo(rgbf, CV_32F);
+	vector<Mat> bgr; split(rgbf, bgr);
+	Mat B = bgr[0]; Mat G = bgr[1]; Mat R = bgr[2];
+	const float eps = 1e-6f;
+
+	// 1. MODIFIED VEGETATION INDEX:
+    // Instead of Excess Green (2G-R-B), we use an index that rewards BOTH Green and Red (Yellow = Green + Red)
+    // while heavily penalizing Blue (which is present in the gray concrete shadows).
+	Mat PlantIndex = G + R - 2.0f * B;
+
+	// Normalize PlantIndex for thresholding
+	Mat PlantIndex_norm; normalize(PlantIndex, PlantIndex_norm, 0.0f, 255.0f, NORM_MINMAX);
+	Mat PlantIndex8; PlantIndex_norm.convertTo(PlantIndex8, CV_8U);
+
+	// Otsu threshold on the new Plant Index
+	Mat maskPlantIndex; threshold(PlantIndex8, maskPlantIndex, 0, 255, THRESH_BINARY | THRESH_OTSU);
+
+	// Prepare combined mask; try to use NIR-based GNDVI if available
+	Mat combined_mask = Mat::zeros(PlantIndex8.size(), CV_8U);
+	bool hasNIR = false;
+	Mat maskGNDVI;
+	Mat GNDVI_norm;
+
 	if (bands.count(5)) {
 		Mat NIR = bands.at(5).clone();
-		if (NIR.empty()) return combined_mask;
-		
-		Scalar meanVal = mean(NIR);
-		double minVal, maxVal;
-		minMaxLoc(NIR, &minVal, &maxVal);
-		
-		if (NIR.channels() > 1 || NIR.depth() != CV_8U || maxVal > 200) {
-			gLog << "    Warning: Band 5 has unexpected properties (channels=" << NIR.channels() << ", depth=" << NIR.depth() << ", max=" << maxVal << "). Using HSV only." << endl;
-		} else {
-			cv::resize(NIR, NIR, hsv_mask.size());
-			threshold(NIR, NIR, 50, 255, THRESH_BINARY);
-			
-			Mat kernel = getStructuringElement(MORPH_ELLIPSE, Size(5, 5));
-			dilate(NIR, NIR, kernel, Point(-1, -1), 2);
-			erode(NIR, NIR, kernel, Point(-1, -1), 2);
-			
-			bitwise_or(hsv_mask, NIR, combined_mask);
+		if (!NIR.empty()) {
+			if (NIR.channels() > 1) {
+				double minVal, maxVal; minMaxLoc(NIR, &minVal, &maxVal);
+				cout << "    Warning: Band 5 has unexpected properties. Ignoring NIR for GNDVI." << endl;
+			} else {
+				cv::resize(NIR, NIR, PlantIndex8.size());
+				Mat NIRf; NIR.convertTo(NIRf, CV_32F);
+
+                if (NIRf.total() > 0) {
+					Mat flat = NIRf.reshape(1, (int)NIRf.total());
+					Mat sorted;
+					cv::sort(flat, sorted, SORT_EVERY_COLUMN + SORT_ASCENDING);
+					int total = sorted.rows;
+					int idx2 = std::max(0, (int)std::round(total * 0.02f));
+					int idx98 = std::min(total - 1, (int)std::round(total * 0.98f));
+					float p2 = sorted.at<float>(idx2);
+					float p98 = sorted.at<float>(idx98);
+					if (p98 <= p2) {
+						p2 = sorted.at<float>(0);
+						p98 = sorted.at<float>(std::min(total - 1, 1));
+					}
+
+					Mat NIRclipped = NIRf.clone();
+					Mat lowMask = NIRf < p2;
+					Mat highMask = NIRf > p98;
+					NIRclipped.setTo(p2, lowMask);
+					NIRclipped.setTo(p98, highMask);
+
+					Mat Gf; G.convertTo(Gf, CV_32F);
+					Mat GNDVI = (NIRclipped - Gf) / (NIRclipped + Gf + eps);
+
+					normalize(GNDVI, GNDVI_norm, 0.0f, 255.0f, NORM_MINMAX);
+					Mat GNDVI8; GNDVI_norm.convertTo(GNDVI8, CV_8U);
+
+					threshold(GNDVI8, maskGNDVI, 0, 255, THRESH_BINARY | THRESH_OTSU);
+					hasNIR = true;
+				}
+			}
 		}
-	} else {
-		Mat kernel = getStructuringElement(MORPH_ELLIPSE, Size(5, 5));
-		dilate(hsv_mask, hsv_mask, kernel, Point(-1, -1), 1);
-		erode(hsv_mask, hsv_mask, kernel, Point(-1, -1), 1);
-		combined_mask = hsv_mask;
 	}
-	
-	Mat kernel = getStructuringElement(MORPH_ELLIPSE, Size(3, 3));
-	dilate(combined_mask, combined_mask, kernel, Point(-1, -1), 2);
-	
+
+	if (hasNIR) {
+		Mat score;
+		Mat Plant_n32; PlantIndex_norm.convertTo(Plant_n32, CV_32F);
+		Mat GNDVI_n32; GNDVI_norm.convertTo(GNDVI_n32, CV_32F);
+
+		float alpha = 0.6f, beta = 0.4f;
+		score = alpha * Plant_n32 + beta * GNDVI_n32;
+
+		Mat score8; score.convertTo(score8, CV_8U);
+		Mat maskScore; threshold(score8, maskScore, 0, 255, THRESH_BINARY | THRESH_OTSU);
+
+		bitwise_and(maskPlantIndex, maskGNDVI, combined_mask);
+		bitwise_or(combined_mask, maskScore, combined_mask);
+	} else {
+		combined_mask = maskPlantIndex;
+	}
+
+	// 2. EXPANDED HSV RANGE:
+    // Lowered Hue from 35 to 18 to capture yellow and brownish-green distressed leaves.
+    // Lowered Saturation from 40 to 25 because distressed leaves lose their vivid color.
+	Mat hsv; cvtColor(rgbImg, hsv, COLOR_BGR2HSV);
+	Mat hsv_mask;
+    inRange(hsv, Scalar(18, 25, 30), Scalar(90, 255, 255), hsv_mask);
+
+    bitwise_and(combined_mask, hsv_mask, combined_mask);
+
+	// 3. GENTLE MORPHOLOGY:
+    // Using a median blur instead of MORPH_OPEN to remove salt-and-pepper concrete noise
+    // without erasing the very thin, dying stems of the plant.
+    medianBlur(combined_mask, combined_mask, 3);
+
+    // Smaller closure to bridge gaps in thin leaves
+	Mat kernelClose = getStructuringElement(MORPH_ELLIPSE, Size(3, 3));
+	morphologyEx(combined_mask, combined_mask, MORPH_CLOSE, kernelClose);
+
+    // Slight dilation to ensure boundary pixels of leaves are kept
+	Mat kernelDilate = getStructuringElement(MORPH_ELLIPSE, Size(3, 3));
+	dilate(combined_mask, combined_mask, kernelDilate, Point(-1, -1), 1);
+
+	// 4. FOCUS MASK: either elliptical centroid radius (preferred) or small border margin fallback
+	if (greenCentroidRadiusX > 0 || greenCentroidRadiusY > 0) {
+		int w = combined_mask.cols; int h = combined_mask.rows;
+		Point center(w/2, h/2);
+		Mat ellipseMask = Mat::zeros(combined_mask.size(), CV_8U);
+		int rx = greenCentroidRadiusX > 0 ? std::min(greenCentroidRadiusX, w) : std::min(w/2, w);
+		int ry = greenCentroidRadiusY > 0 ? std::min(greenCentroidRadiusY, h) : std::min(h/2, h);
+		// OpenCV ellipse axes are half-lengths (rx, ry)
+		ellipse(ellipseMask, center, Size(rx, ry), 0.0, 0.0, 360.0, Scalar(255), FILLED);
+		bitwise_and(combined_mask, ellipseMask, combined_mask);
+	} else {
+		// small rectangular margin (5%) as a conservative fallback
+		int w = combined_mask.cols; int h = combined_mask.rows;
+		int marginX = std::max(1, (int)std::round(w * 0.05));
+		int marginY = std::max(1, (int)std::round(h * 0.05));
+		Mat borderMask = Mat::zeros(combined_mask.size(), CV_8U);
+		Rect innerRect(marginX, marginY, std::max(0, w - 2 * marginX), std::max(0, h - 2 * marginY));
+		if (innerRect.width > 0 && innerRect.height > 0) borderMask(innerRect).setTo(255);
+		bitwise_and(combined_mask, borderMask, combined_mask);
+	}
+
+	// Apply mask to index image (zero-out background)
 	if (indexImg.size() == combined_mask.size()) {
 		indexImg.setTo(0, combined_mask == 0);
 	}
-	
+
 	return combined_mask;
 }
 

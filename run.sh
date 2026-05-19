@@ -4,7 +4,7 @@ CC="gcc"
 CFLAGS="-std=c++17 -fopenmp"
 CW_FLAGS="-Wall -Wextra -pedantic"
 
-LIBS="-lstdc++"
+LIBS="-lstdc++ -lm"
 TIFFLIB="-ltiff -Ilibtiff -Ilibtiff/include -Llibtiff/lib"
 OPENCVLIB_WIN="-Ic:/opencv -Ic:/opencv/include -Lc:/opencv/x64/mingw/lib/ -lopencv_core455 -lopencv_calib3d455 -lopencv_imgcodecs455 -lopencv_imgproc455 -lopencv_video455 -lopencv_highgui455 -lopencv_features2d455"
 RAYLIB="-Iraylib/include -Lraylib/lib -lraylib"
@@ -67,25 +67,25 @@ case "$1" in
     ###############################################################################################
     
     "example:calib")
-        run_cmd ./calib .input .output --optimize 
+        run_cmd ./calib .input .output --optimize --green-centroid-radius 450,400
         ;;
     "example:calib-radio")
-        run_cmd ./calib .input .output --optimize --radio 0,25
+        run_cmd ./calib .input .output --optimize --green-centroid-radius 500,400 --radio 0,25
         ;;
     "example:calib-auto")
-        run_cmd ./calib .input .output --optimize --radio --auto 10 --ref .input_ref/radiometric_reference.csv --template .input_ref/radiometric_board.jpg
+        run_cmd ./calib .input .output --optimize --green-centroid-radius 500,400 --radio --auto 10 --ref .input_ref/radiometric_reference.csv --template .input_ref/radiometric_board.jpg
         ;;
     
     ###############################################################################################
 
     "example:calib-win")
-        run_cmd ./window_build/calib-wingui.exe .input .output --optimize
+        run_cmd ./window_build/calib-wingui.exe .input .output --optimize --green-centroid-radius 500,400
         ;;
     "example:calib-win-radio")
-        run_cmd ./window_build/calib-wingui.exe .input .output --optimize --radio 0,25
+        run_cmd ./window_build/calib-wingui.exe .input .output --optimize --green-centroid-radius 500,400 --radio 0,25
         ;;
     "example:calib-win-auto")
-        run_cmd ./window_build/calib-wingui.exe .input .output --optimize --radio 0,25 --auto 10
+        run_cmd ./window_build/calib-wingui.exe .input .output --optimize --green-centroid-radius 500,400 --radio 0,25 --auto 10
         ;;
     "example:calib-win-gui")
         run_cmd ./window_build/calib-wingui.exe --gui

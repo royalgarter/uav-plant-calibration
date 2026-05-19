@@ -32,6 +32,7 @@ void showUsage() {
 	cout << "  --veg-idx     Comma-separated list of vegetation indices to calculate." << endl;
 	cout << "                Supported: ndvi, evi, gndvi, ndre, rdvi, osavi, msr" << endl;
 	cout << "                Default: ndvi" << endl;
+	cout << "  --green-centroid-radius, -gcr  Radius in pixels to focus green mask around image center (default: 0 = disabled)" << endl;
 #ifdef WINGUI
 	cout << "  --gui         Launch Windows GUI interface." << endl;
 #endif
@@ -63,6 +64,9 @@ int main(int argc, char** argv) {
 	int autoRadioThickness = -1;
 	Point radioInterval(40, 0);
 	vector<string> requestedVegIndices = {"ndvi"};
+	// Focus radius (pixels) for green centroid masking. 0==disabled
+	int greenCentroidRadiusX = 0;
+	int greenCentroidRadiusY = 0;
 
 	// Check for GUI flag first
 	gLog << "argv[1]: " << argv[1] << endl;
@@ -192,6 +196,29 @@ int main(int argc, char** argv) {
 					requestedVegIndices.push_back(segment);
 				}
 				i++;
+			} else if (arg == "--green-centroid-radius" || arg == "-gcr") {
+				if (i + 1 < argc && argv[i+1][0] != '-') {
+					string val = argv[i+1];
+					auto commaPos = val.find(',');
+					if (commaPos != string::npos) {
+						string sx = val.substr(0, commaPos);
+						string sy = val.substr(commaPos + 1);
+						try {
+							greenCentroidRadiusX = stoi(sx);
+							greenCentroidRadiusY = stoi(sy);
+						} catch (...) {
+							// ignore parse error, keep defaults
+						}
+					} else {
+						try {
+							int r = stoi(val);
+							greenCentroidRadiusX = greenCentroidRadiusY = r;
+						} catch (...) {
+							// ignore
+						}
+					}
+					i++;
+				}
 			} else {
 				args.push_back(arg);
 			}
@@ -556,8 +583,18 @@ int main(int argc, char** argv) {
 
 			// Apply green mask if RGB image (band 0) is available
 			if (alignedBands.count(0)) {
-				Mat greenMask = applyGreenMask(indexImg, alignedBands[0], vegidxDir, prefix, vegIdx, alignedBands);
-				imwrite(vegidxDir + "/" + prefix + "_green_mask.tif", greenMask);
+				Mat greenMask = applyGreenMask(indexImg, alignedBands[0], vegidxDir, prefix, vegIdx, alignedBands, greenCentroidRadiusX, greenCentroidRadiusY);
+				// Create RGB composite: overlay semi-transparent green where mask is true
+				Mat rgbImg = alignedBands[0];
+				Mat rgb_u8;
+				if (rgbImg.type() != CV_8UC3) rgbImg.convertTo(rgb_u8, CV_8UC3);
+				else rgb_u8 = rgbImg.clone();
+				Mat overlay(rgb_u8.size(), CV_8UC3, Scalar(0, 255, 0)); // BGR green overlay
+				Mat blended;
+				addWeighted(rgb_u8, 0.5, overlay, 0.5, 0.0, blended);
+				Mat composite = rgb_u8.clone();
+				blended.copyTo(composite, greenMask);
+				imwrite(vegidxDir + "/" + prefix + "_green_mask.tif", composite);
 			}
 
 			// Calculate average (excluding 0/masked pixels)
