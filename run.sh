@@ -67,7 +67,7 @@ case "$1" in
     ###############################################################################################
     
     "example:calib")
-        run_cmd ./calib .input .output --optimize --green-centroid-radius 450,400
+        run_cmd ./calib .input .output --optimize --green-centroid-radius 150,150
         ;;
     "example:calib-radio")
         run_cmd ./calib .input .output --optimize --green-centroid-radius 500,400 --radio 0,25

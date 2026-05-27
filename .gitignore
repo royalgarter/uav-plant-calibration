@@ -47,3 +47,4 @@ output.png
 /raylib
 /window_build/.output
 /runtime/settings
+/.test_output

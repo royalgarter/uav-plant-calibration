@@ -574,6 +574,254 @@ RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point i
 	return coeffs;
 }
 
+RadioCoeffs getRadiometricCoeffsByEdge(const Mat& img, const string& filename, Point interval, int autoDetectThickness,
+								  const string& radioDir, const string& templatePath) {
+	RadioState state;
+	Mat display;
+	RadioCoeffs coeffs;
+
+	if (img.depth() != CV_8U) {
+		double minVal, maxVal;
+		minMaxLoc(img, &minVal, &maxVal);
+		if (maxVal == minVal) maxVal = minVal + 1.0;
+		img.convertTo(display, CV_8U, 255.0 / (maxVal - minVal), -minVal * 255.0 / (maxVal - minVal));
+	} else {
+		display = img.clone();
+	}
+
+	if (display.channels() == 1) cvtColor(display, display, COLOR_GRAY2BGR);
+
+	if (autoDetectThickness >= 0) {
+		Mat templ = imread(templatePath, IMREAD_COLOR);
+		if (!templ.empty()) {
+			cout << "  Auto-detecting board using COMBINED (Intensity + Edge) matching..." << endl;
+			double maxVal_total = -1;
+			Point maxLoc_total;
+			int bestRot = 0;
+			double bestScale = 1.0;
+			Size bestSize;
+
+			// --- 1. Prepare Display Image (Intensity & Gradients) ---
+			Mat grayDisplay;
+			cvtColor(display, grayDisplay, COLOR_BGR2GRAY);
+			
+			Mat gradX_disp, gradY_disp, magDisplay;
+			Sobel(grayDisplay, gradX_disp, CV_32F, 1, 0, 3);
+			Sobel(grayDisplay, gradY_disp, CV_32F, 0, 1, 3);
+			magnitude(gradX_disp, gradY_disp, magDisplay);
+			normalize(magDisplay, magDisplay, 0, 255, NORM_MINMAX, CV_8U); 
+
+			// --- 2. Prepare Template (Intensity & Gradients) ---
+			Mat baseGrayTempl;
+			cvtColor(templ, baseGrayTempl, COLOR_BGR2GRAY);
+			
+			Mat gradX_t, gradY_t, magBaseTempl;
+			Sobel(baseGrayTempl, gradX_t, CV_32F, 1, 0, 3);
+			Sobel(baseGrayTempl, gradY_t, CV_32F, 0, 1, 3);
+			magnitude(gradX_t, gradY_t, magBaseTempl);
+			normalize(magBaseTempl, magBaseTempl, 0, 255, NORM_MINMAX, CV_8U);
+
+			// --- 3. Broader Scale Search ---
+			vector<double> scales;
+			for(double s = 0.2; s <= 2.0; s += 0.15) { 
+				scales.push_back(s);
+			}
+
+			for (double scale : scales) {
+				Mat scaledMagTempl, scaledGrayTempl;
+				resize(magBaseTempl, scaledMagTempl, Size(), scale, scale);
+                resize(baseGrayTempl, scaledGrayTempl, Size(), scale, scale);
+
+				for (int rot = 0; rot < 4; ++rot) {
+					Mat rotMagTempl, rotGrayTempl;
+					if (rot == 0) { rotMagTempl = scaledMagTempl; rotGrayTempl = scaledGrayTempl; }
+					else if (rot == 1) { rotate(scaledMagTempl, rotMagTempl, ROTATE_90_CLOCKWISE); rotate(scaledGrayTempl, rotGrayTempl, ROTATE_90_CLOCKWISE); }
+					else if (rot == 2) { rotate(scaledMagTempl, rotMagTempl, ROTATE_180); rotate(scaledGrayTempl, rotGrayTempl, ROTATE_180); }
+					else if (rot == 3) { rotate(scaledMagTempl, rotMagTempl, ROTATE_90_COUNTERCLOCKWISE); rotate(scaledGrayTempl, rotGrayTempl, ROTATE_90_COUNTERCLOCKWISE); }
+
+					if (rotMagTempl.cols > magDisplay.cols || rotMagTempl.rows > magDisplay.rows) continue;
+
+					// A. Match Intensity
+					Mat res_intensity;
+					matchTemplate(grayDisplay, rotGrayTempl, res_intensity, TM_CCOEFF_NORMED);
+                    // Remove negative correlations (inversions) to prevent them from breaking the math
+                    threshold(res_intensity, res_intensity, 0, 1.0, THRESH_TOZERO); 
+
+                    // B. Match Edges
+                    Mat res_edges;
+					matchTemplate(magDisplay, rotMagTempl, res_edges, TM_CCOEFF_NORMED);
+                    threshold(res_edges, res_edges, 0, 1.0, THRESH_TOZERO);
+
+                    // C. Combine Maps (50% Intensity, 50% Edges)
+                    // The true board will peak heavily in BOTH maps at the exact same pixel.
+                    Mat result_combined;
+                    addWeighted(res_intensity, 0.5, res_edges, 0.5, 0.0, result_combined);
+					
+					double minVal, maxVal;
+					Point minLoc, maxLoc;
+					minMaxLoc(result_combined, &minVal, &maxVal, &minLoc, &maxLoc);
+
+					if (maxVal > maxVal_total) {
+						maxVal_total = maxVal;
+						maxLoc_total = maxLoc;
+						bestRot = rot;
+						bestScale = scale;
+						bestSize = rotMagTempl.size();
+					}
+				}
+			}
+
+			// Threshold is slightly lower because combined maps rarely hit perfect 1.0
+			if (maxVal_total > 0.45) { 
+				cout << "    Board detected! (score=" << maxVal_total << ", rot=" << bestRot*90 << "deg, scale=" << bestScale << ")" << endl;
+				Point p56_rel, p3_rel;
+                
+                // CRITICAL FIX: The thickness of the border scales with the template!
+				double T = autoDetectThickness * bestScale; 
+				double IW = bestSize.width - 2 * T;
+				double IH = bestSize.height - 2 * T;
+
+                // NOTE: This logic assumes a 4-patch board. If your template is a 3-patch board, 
+                // the /8 and *7/8 math below will not land on the correct patches.
+				if (bestRot == 0) {
+					p56_rel = Point(bestSize.width / 2, T + IH / 8);
+					p3_rel = Point(bestSize.width / 2, T + IH * 7 / 8);
+				} else if (bestRot == 1) {
+					p56_rel = Point(T + IW * 7 / 8, bestSize.height / 2);
+					p3_rel = Point(T + IW / 8, bestSize.height / 2);
+				} else if (bestRot == 2) {
+					p56_rel = Point(bestSize.width / 2, T + IH * 7 / 8);
+					p3_rel = Point(bestSize.width / 2, T + IH / 8);
+				} else if (bestRot == 3) {
+					p56_rel = Point(T + IW / 8, bestSize.height / 2);
+					p3_rel = Point(T + IW * 7 / 8, bestSize.height / 2);
+				}
+
+				state.p56 = maxLoc_total + p56_rel;
+				state.p3 = maxLoc_total + p3_rel;
+				state.clicks = 2;
+			} else {
+                cout << "    Failed to detect board (highest score: " << maxVal_total << ")" << endl;
+            }
+		} else {
+            cout << "    Warning: Could not load template file!" << endl;
+        }
+	}
+
+	string winName = "Radiometric Calibration - " + filename;
+	if (state.clicks < 2) {
+		namedWindow(winName, WINDOW_NORMAL);
+		setMouseCallback(winName, onMouseRadio, &state);
+		cout << "Radiometric Calibration for " << filename << ":" << endl;
+		cout << "  1. Click on the center of the 56% patch (usually the brightest/leftmost)." << endl;
+		cout << "  2. Click on the center of the 3% patch (usually the darkest/rightmost)." << endl;
+	}
+
+	int boxSize = 5;
+	while (state.clicks < 2) {
+		Mat temp = display.clone();
+		if (state.clicks >= 1) circle(temp, state.p56, boxSize, Scalar(0, 0, 255), -1);
+		imshow(winName, temp);
+		int key = waitKey(10);
+		if (key == 27) {
+			destroyWindow(winName);
+			return coeffs;
+		}
+	}
+
+	coeffs.filename = filename;
+	string stem = path(filename).stem().string();
+	vector<double> defaultTargets = {0.5647, 0.3582, 0.1148, 0.0272};
+	vector<double> targets = defaultTargets;
+
+	if (!stem.empty()) {
+		char lastChar = stem.back();
+		if (lastChar == '5') {
+			auto it = gRadioRefs.find("5");
+			targets = (it != gRadioRefs.end()) ? it->second.patches : defaultTargets;
+			coeffs.bandName = "NIR";
+		} else if (lastChar == '4') {
+			auto it = gRadioRefs.find("4");
+			targets = (it != gRadioRefs.end()) ? it->second.patches : defaultTargets;
+			coeffs.bandName = "RedEdge";
+		} else if (lastChar == '3') {
+			auto it = gRadioRefs.find("3");
+			targets = (it != gRadioRefs.end()) ? it->second.patches : defaultTargets;
+			coeffs.bandName = "Red";
+		} else if (lastChar == '2') {
+			auto it = gRadioRefs.find("2");
+			targets = (it != gRadioRefs.end()) ? it->second.patches : defaultTargets;
+			coeffs.bandName = "Green";
+		} else if (lastChar == '1') {
+			auto it = gRadioRefs.find("1");
+			targets = (it != gRadioRefs.end()) ? it->second.patches : defaultTargets;
+			coeffs.bandName = "Blue";
+		} else if (lastChar == '0') {
+			coeffs.isRGB = true;
+			coeffs.bandName = "RGB";
+			auto itR = gRadioRefs.find("0R"); auto itG = gRadioRefs.find("0G"); auto itB = gRadioRefs.find("0B");
+			coeffs.targets_r = (itR != gRadioRefs.end()) ? itR->second.patches : defaultTargets;
+			coeffs.targets_g = (itG != gRadioRefs.end()) ? itG->second.patches : defaultTargets;
+			coeffs.targets_b = (itB != gRadioRefs.end()) ? itB->second.patches : defaultTargets;
+		}
+	}
+
+	if (!coeffs.isRGB) coeffs.targets = targets;
+
+	double stepX = (state.p3.x - state.p56.x) / 3.0;
+	double stepY = (state.p3.y - state.p56.y) / 3.0;
+	vector<double> dns_r, dns_g, dns_b;
+
+	for (int i = 0; i < 4; ++i) {
+		int cx = cvRound(state.p56.x + i * stepX);
+		int cy = cvRound(state.p56.y + i * stepY);
+		Rect roi(cx - boxSize / 2, cy - boxSize / 2, boxSize, boxSize);
+		roi &= Rect(0, 0, img.cols, img.rows);
+
+		if (roi.area() > 0) {
+			Scalar avg = mean(img(roi));
+			if (coeffs.isRGB && img.channels() >= 3) {
+				dns_b.push_back(avg[0]); dns_g.push_back(avg[1]); dns_r.push_back(avg[2]);
+			} else {
+				dns_r.push_back(avg[0]);
+			}
+			rectangle(display, roi, Scalar(0, 255, 0), 1);
+		} else {
+			dns_r.push_back(0);
+			if (coeffs.isRGB) { dns_g.push_back(0); dns_b.push_back(0); }
+		}
+	}
+
+	if (coeffs.isRGB) { coeffs.dns_r = dns_r; coeffs.dns_g = dns_g; coeffs.dns_b = dns_b; }
+	else { coeffs.dns = dns_r; }
+
+	if (autoDetectThickness >= 0) {
+		if (!exists(radioDir)) create_directories(radioDir);
+		imwrite(radioDir + "/" + filename + "_board_preview.jpg", display);
+	}
+
+	auto solveCoeffs = [](const vector<double>& dns, const vector<double>& tgts) -> pair<double, double> {
+		Mat X(4, 2, CV_64F); Mat Y(4, 1, CV_64F);
+		for (int i = 0; i < 4; ++i) { X.at<double>(i, 0) = dns[i]; X.at<double>(i, 1) = 1.0; Y.at<double>(i, 0) = tgts[i]; }
+		Mat sol; solve(X, Y, sol, DECOMP_SVD);
+		return {sol.at<double>(0, 0), sol.at<double>(1, 0)};
+	};
+
+	if (coeffs.isRGB && img.channels() >= 3) {
+		auto [a_r, b_r] = solveCoeffs(dns_r, coeffs.targets_r);
+		auto [a_g, b_g] = solveCoeffs(dns_g, coeffs.targets_g);
+		auto [a_b, b_b] = solveCoeffs(dns_b, coeffs.targets_b);
+		coeffs.a_r = a_r; coeffs.b_r = b_r; coeffs.a_g = a_g; coeffs.b_g = b_g; coeffs.a_b = a_b; coeffs.b_b = b_b;
+		coeffs.valid = true;
+	} else {
+		auto [a, b] = solveCoeffs(dns_r, targets);
+		coeffs.a = a; coeffs.b = b; coeffs.valid = true;
+	}
+
+	coeffs.p56 = state.p56; coeffs.p3 = state.p3; coeffs.boxSize = boxSize;
+	return coeffs;
+}
+
 Mat applyRadiometricCalibration(const Mat& img, RadioCoeffs coeffs) {
 	if (!coeffs.valid) return img.clone();
 	Mat calibrated;
@@ -623,7 +871,7 @@ void exportRadiometricCsv(const string& outPath, const map<string, GroupData>& a
 
 // --- VEGETATION INDICES ---
 
-Mat calculateVegIndex(const string& type, const map<int, Mat>& bands) {
+Mat calculateVegIndex(const string& type, const map<int, Mat>& bands, const Mat& mask) {
 	// https://github.com/px39n/Awesome-Vegetation-Index
 	
 	Mat nir, red, green, blue, re, swir1, swir2;
@@ -638,6 +886,17 @@ Mat calculateVegIndex(const string& type, const map<int, Mat>& bands) {
 	else if (bands.count(3) && !bands.count(4)) bands.at(3).convertTo(re, CV_32F);
 	if (bands.count(6)) bands.at(6).convertTo(swir1, CV_32F);
 	if (bands.count(7)) bands.at(7).convertTo(swir2, CV_32F);
+
+	// Apply mask before calculation if provided
+	if (!mask.empty()) {
+		if (!nir.empty()) nir.setTo(0, mask == 0);
+		if (!red.empty()) red.setTo(0, mask == 0);
+		if (!green.empty()) green.setTo(0, mask == 0);
+		if (!blue.empty()) blue.setTo(0, mask == 0);
+		if (!re.empty()) re.setTo(0, mask == 0);
+		if (!swir1.empty()) swir1.setTo(0, mask == 0);
+		if (!swir2.empty()) swir2.setTo(0, mask == 0);
+	}
 
 	Mat result;
 	const float eps = 1e-6f;
@@ -777,13 +1036,16 @@ Mat calculateVegIndex(const string& type, const map<int, Mat>& bands) {
 		result = (ratio - 1.0f) / (sqrt_ratio + 1.0f + eps); 
 	}
 
-	if (!result.empty()) { threshold(result, result, 0, 0, THRESH_TOZERO); threshold(result, result, 1, 1, THRESH_TRUNC); }
+	if (!result.empty()) { 
+		threshold(result, result, 0, 0, THRESH_TOZERO); 
+		threshold(result, result, 1, 1, THRESH_TRUNC); 
+	}
 	return result;
 }
 
 GreenMaskResults applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const string& outputDir, const string& prefix, const string& indexName, const map<int, Mat>& bands, int greenCentroidRadiusX, int greenCentroidRadiusY) {
 	GreenMaskResults results;
-	if (rgbImg.empty() || indexImg.empty()) return results;
+	if (rgbImg.empty()) return results;
 
 	gLog << "  INFO: greenCentroidRadiusX=" << greenCentroidRadiusX << ", Y=" << greenCentroidRadiusY << endl;
 
@@ -971,13 +1233,18 @@ GreenMaskResults applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const 
 
 	// 5. FOCUS MASK
 	if (greenCentroidRadiusX > 0 || greenCentroidRadiusY > 0) {
-		int w = combined_mask.cols; int h = combined_mask.rows;
-		Point center(w / 2, h / 2);
-		Mat ellipseMask = Mat::zeros(combined_mask.size(), CV_8U);
-		int rx = greenCentroidRadiusX > 0 ? std::min(greenCentroidRadiusX, w) : std::min(w / 2, w);
-		int ry = greenCentroidRadiusY > 0 ? std::min(greenCentroidRadiusY, h) : std::min(h / 2, h);
-		ellipse(ellipseMask, center, Size(rx, ry), 0.0, 0.0, 360.0, Scalar(255), FILLED);
-		bitwise_and(combined_mask, ellipseMask, combined_mask);
+		Point center(combined_mask.cols / 2, combined_mask.rows / 2);
+		if (results.valid) {
+			center = (results.ellipse.size.width > 0) ? Point(results.ellipse.center) : Point(results.centroid);
+		}
+		int radius = std::min(greenCentroidRadiusX, greenCentroidRadiusY);
+
+		// Mat circleMask = Mat::zeros(combined_mask.size(), CV_8U);
+		// circle(circleMask, center, radius, Scalar(255), FILLED);
+		// bitwise_and(combined_mask, circleMask, combined_mask);
+
+		combined_mask = Mat::zeros(combined_mask.size(), CV_8U);
+		circle(combined_mask, center, radius, Scalar(255), FILLED);
 	} else {
 		int w = combined_mask.cols; int h = combined_mask.rows;
 		int marginX = std::max(1, (int)std::round(w * 0.05));
@@ -989,7 +1256,7 @@ GreenMaskResults applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const 
 	}
 
 	// Apply mask to index image
-	if (indexImg.size() == combined_mask.size()) {
+	if (!indexImg.empty() && indexImg.size() == combined_mask.size()) {
 		indexImg.setTo(0, combined_mask == 0);
 	}
 

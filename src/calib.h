@@ -156,7 +156,7 @@ struct GreenMaskResults {
 	bool valid = false;
 };
 
-cv::Mat calculateVegIndex(const std::string& type, const std::map<int, cv::Mat>& bands);
+cv::Mat calculateVegIndex(const std::string& type, const std::map<int, cv::Mat>& bands, const cv::Mat& mask = cv::Mat());
 GreenMaskResults applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const std::string& outputDir, const std::string& prefix, const std::string& indexName, const std::map<int, cv::Mat>& bands, int greenCentroidRadiusX = 0, int greenCentroidRadiusY = 0);
 void exportVegIndexCsv(const std::string& outPath, const std::vector<std::string>& requestedIndices, const std::map<std::string, std::map<std::string, double>>& averages);
 

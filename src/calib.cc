@@ -568,12 +568,25 @@ int main(int argc, char** argv) {
 			gLog << ss.str();
 		}
 
+		// Pre-calculate common green mask if RGB image (band 0) is available
+		GreenMaskResults commonRes;
+		Mat commonMask;
+		bool hasCommonMask = false;
+		if (alignedBands.count(0)) {
+			Mat dummy;
+			commonRes = applyGreenMask(dummy, alignedBands[0], vegidxDir, prefix, "common", alignedBands, greenCentroidRadiusX, greenCentroidRadiusY);
+			commonMask = commonRes.mask;
+			hasCommonMask = true;
+		}
+
 		// Calculate and save requested vegetation indices
 		for (const string& vegIdx : requestedVegIndices) {
 			gLog << "\n    Step D: Calculating " << vegIdx << " for group " << prefix << "..." << endl;
 			clock_t startD = clock();
 
-			Mat indexImg = calculateVegIndex(vegIdx, alignedBands);
+			imwrite(vegidxDir + "/" + prefix + "_mask.jpg", commonMask);
+
+			Mat indexImg = calculateVegIndex(vegIdx, alignedBands, commonMask);
 			
 			if (indexImg.empty()) {
 				stringstream ssBands;
@@ -583,10 +596,9 @@ int main(int argc, char** argv) {
 				continue;
 			}
 
-			// Apply green mask if RGB image (band 0) is available
-			if (alignedBands.count(0)) {
-				GreenMaskResults res = applyGreenMask(indexImg, alignedBands[0], vegidxDir, prefix, vegIdx, alignedBands, greenCentroidRadiusX, greenCentroidRadiusY);
-				Mat greenMask = res.mask;
+			// Apply green mask results if available
+			if (hasCommonMask) {
+				Mat greenMask = commonMask;
 
 				// Create RGB composite: overlay semi-transparent green where mask is true
 				Mat rgbImg = alignedBands[0];
@@ -600,23 +612,25 @@ int main(int argc, char** argv) {
 				blended.copyTo(composite, greenMask);
 
 				// Draw extraction results for verification
-				if (res.valid) {
+				if (commonRes.valid) {
 					// Draw Convex Hull (Yellow)
-					if (!res.convexHull.empty()) {
-						vector<vector<Point>> hulls = { res.convexHull };
+					if (!commonRes.convexHull.empty()) {
+						vector<vector<Point>> hulls = { commonRes.convexHull };
 						drawContours(composite, hulls, 0, Scalar(0, 255, 255), 2);
 					}
 					// Draw Ellipse (Red)
-					if (res.ellipse.size.width > 0) {
-						ellipse(composite, res.ellipse, Scalar(0, 0, 255), 2);
+					if (commonRes.ellipse.size.width > 0) {
+						ellipse(composite, commonRes.ellipse, Scalar(0, 0, 255), 2);
 					}
 					// Draw Centroid (Blue Cross)
 					int cs = 10;
-					line(composite, Point(res.centroid.x - cs, res.centroid.y), Point(res.centroid.x + cs, res.centroid.y), Scalar(255, 0, 0), 2);
-					line(composite, Point(res.centroid.x, res.centroid.y - cs), Point(res.centroid.x, res.centroid.y + cs), Scalar(255, 0, 0), 2);
+					line(composite, Point(commonRes.centroid.x - cs, commonRes.centroid.y), Point(commonRes.centroid.x + cs, commonRes.centroid.y), Scalar(255, 0, 0), 2);
+					line(composite, Point(commonRes.centroid.x, commonRes.centroid.y - cs), Point(commonRes.centroid.x, commonRes.centroid.y + cs), Scalar(255, 0, 0), 2);
 				}
 
-				imwrite(vegidxDir + "/" + prefix + "_green_mask.tif", composite);
+				if (vegIdx == requestedVegIndices[0]) { // Save mask preview once
+					imwrite(vegidxDir + "/" + prefix + "_green_mask.tif", composite);
+				}
 			}
 
 			// Calculate average (excluding 0/masked pixels)
