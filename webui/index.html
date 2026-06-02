@@ -35,110 +35,112 @@
 		<div class="grid grid-cols-1 md:grid-cols-12 gap-4">
 			<!-- Configuration Column -->
 			<div class="md:col-span-3 space-y-4">
-				<div class="border p-4">
-					<h2 class="text-lg font-semibold mb-4 flex items-center">
+				<div class="border">
+					<h2 class="bg-gray-50 border-b text-base font-semibold mb-4 flex items-center cursor-pointer px-4 py-2" @click="showConfig = !showConfig">
 						<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
 						Configuration
 					</h2>
 
-					<div class="space-y-2 text-sm">
+					<div class="p-4" x-show="showConfig">
+						<div class="space-y-2 text-sm">
 
-						<div class="flex items-center">
-							<label class="block font-medium text-gray-700 w-36">Input Folder</label>
-							<input type="text" x-model="config.inDir" class="block w-full p-2 border text-xs">
-							<button @click="$refs.inDirPicker.click()" type="button" class="cursor-pointer h-8 ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Browse Folder">
-								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
-							</button>
-							<input type="file" x-ref="inDirPicker" webkitdirectory directory class="hidden" @change="console.dir($event.target.files?.[0]);if($event.target.files.length) {config.inDir = $event.target.files[0].webkitRelativePath.split('/').slice(0, -1).join('/'); $event.target.value = '';}">
-						</div>
-						<div class="flex items-center">
-							<label class="block font-medium text-gray-700 w-36">Output Folder</label>
-							<input type="text" x-model="config.outDir" class="block w-full p-2 border text-xs">
-							<button @click="$refs.outDirPicker.click()" type="button" class="cursor-pointer h-8 ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Browse Folder">
-								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
-							</button>
-							<input type="file" x-ref="outDirPicker" webkitdirectory directory class="hidden" @change="console.dir($event.target.files?.[0]);if($event.target.files.length) {config.outDir = $event.target.files[0].webkitRelativePath.split('/').slice(0, -1).join('/'); $event.target.value = '';}">
-						</div>
+							<div class="flex items-center">
+								<label class="block font-medium text-gray-700 w-36">Input Folder</label>
+								<input type="text" x-model="config.inDir" class="block w-full p-2 border text-xs">
+								<button @click="$refs.inDirPicker.click()" type="button" class="cursor-pointer h-8 ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Browse Folder">
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+								</button>
+								<input type="file" x-ref="inDirPicker" webkitdirectory directory class="hidden" @change="console.dir($event.target.files?.[0]);if($event.target.files.length) {config.inDir = $event.target.files[0].webkitRelativePath.split('/').slice(0, -1).join('/'); $event.target.value = '';}">
+							</div>
+							<div class="flex items-center">
+								<label class="block font-medium text-gray-700 w-36">Output Folder</label>
+								<input type="text" x-model="config.outDir" class="block w-full p-2 border text-xs">
+								<button @click="$refs.outDirPicker.click()" type="button" class="cursor-pointer h-8 ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Browse Folder">
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+								</button>
+								<input type="file" x-ref="outDirPicker" webkitdirectory directory class="hidden" @change="console.dir($event.target.files?.[0]);if($event.target.files.length) {config.outDir = $event.target.files[0].webkitRelativePath.split('/').slice(0, -1).join('/'); $event.target.value = '';}">
+							</div>
 
-						<hr class="my-6">
+							<hr class="my-6">
 
-						<div class="flex items-center justify-between">
-							<span class="font-medium text-gray-700 text-blue-800">Correlation Alignment</span>
-							<button @click="config.optimize = !config.optimize" :class="config.optimize ? 'bg-blue-600' : 'bg-gray-200'" class="relative inline-flex h-6 w-10 flex-shrink-0 cursor-pointer border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ring-offset-2">
-								<span :class="config.optimize ? 'translate-x-5' : 'translate-x-0'" class="pointer-events-none inline-block h-5 w-5 transform bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
-							</button>
-						</div>
-
-						<div class="flex items-center justify-between">
-							<span class="font-medium text-gray-700">Radiometric Calibration</span>
-							<button @click="config.doRadio = !config.doRadio" :class="config.doRadio ? 'bg-blue-600' : 'bg-gray-200'" class="relative inline-flex h-6 w-10 flex-shrink-0 cursor-pointer border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ring-offset-2">
-								<span :class="config.doRadio ? 'translate-x-5' : 'translate-x-0'" class="pointer-events-none inline-block h-5 w-5 transform bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
-							</button>
-						</div>
-
-						<div class="flex items-center justify-between" x-show="false && config.doRadio">
-							<span class="text-gray-700 text-xs">Auto-Detect Board</span>
-							<button @click="toggleAuto()" :class="config.autoRadio ? 'bg-blue-600' : 'bg-gray-200'" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ring-offset-2">
-								<span :class="config.autoRadio ? 'translate-x-5' : 'translate-x-0'" class="pointer-events-none inline-block h-5 w-5 transform bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
-							</button>
-						</div>
-
-						<div class="flex items-center" x-show="config.autoRadio && config.doRadio">
-							<label class="block text-gray-700 w-36 text-xs">Board Thickness</label>
-							<input type="number" x-model="config.autoRadioThickness" class="mt-1 block p-2 border text-xs w-20 lg:w-24 xl:w-48 2xl:w-96">
-							<p class="ml-2 mt-1 text-xs text-gray-500">(px)</br>0=auto</p>
-						</div>
-
-						<div class="flex items-center" x-show="config.doRadio">
-							<label class="block text-gray-700 w-36 text-xs">Board Template</label>
-							<input type="text" x-model="config.radioTemplatePath" class="block w-full p-2 border text-xs">
-							<button @click="$refs.radioTemplatePicker.click()" type="button" class="cursor-pointer h-8 ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Select File">
-								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
-							</button>
-							<input type="file" x-ref="radioTemplatePicker" accept=".jpg,.jpeg,.png" class="hidden" @change="console.dir($event.target.files?.[0]);if($event.target.files.length) {config.radioTemplatePath = $event.target.files[0].name; $event.target.value = '';}">
-						</div>
-
-						<div class="flex items-center" x-show="config.doRadio">
-							<label class="block text-gray-700 w-36 text-xs">Reference CSV</label>
-							<input type="text" x-model="config.radioRefFile" class="block w-full p-2 border text-xs">
-							<button @click="$refs.radioRefPicker.click()" type="button" class="cursor-pointer h-8 ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Select File">
-								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
-							</button>
-							<input type="file" x-ref="radioRefPicker" accept=".csv" class="hidden" @change="console.dir($event.target.files?.[0]);if($event.target.files.length) {config.radioRefFile = $event.target.files[0].name; $event.target.value = '';}">
-						</div>
-					</div>
-
-					<hr class="my-6">
-					<label class="block font-medium text-gray-700 w-36 my-2">Vegetation Indices:</label>
-					<div class="flex items-center" x-show="config.autoRadio && config.doRadio">
-						<label class="block text-gray-700 w-36 text-xs">Green centroid radius</label>
-						<input type="text" x-model="config.greenCentroidRadius" class="mt-1 block p-2 border text-xs w-20 lg:w-24 xl:w-48 2xl:w-96">
-						<p class="ml-2 mt-1 text-xs text-gray-500">(px)</br>0=disabled</p>
-					</div>
-					<div class="space-x-2 space-y-2 text-sm block">
-						<template x-for="vegIdx in Object.keys(config.calc)" :key="vegIdx">
-							<div class="inline-block h-6 w-11 flex-shrink-0">
-								<span x-text="vegIdx" class="text-xs"></span>
-								<button @click="config.calc[vegIdx] = !config.calc[vegIdx]" :class="config.calc[vegIdx] ? 'bg-green-600' : 'bg-gray-200'" class="relative inline-flex h-6 w-10 flex-shrink-0 cursor-pointer border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ring-offset-2">
-									<span :class="config.calc[vegIdx] ? 'translate-x-5' : 'translate-x-0'" class="pointer-events-none inline-block h-5 w-5 transform bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
+							<div class="flex items-center justify-between">
+								<span class="font-medium text-gray-700 text-blue-800">Correlation Alignment</span>
+								<button @click="config.optimize = !config.optimize" :class="config.optimize ? 'bg-blue-600' : 'bg-gray-200'" class="relative inline-flex h-6 w-10 flex-shrink-0 cursor-pointer border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ring-offset-2">
+									<span :class="config.optimize ? 'translate-x-5' : 'translate-x-0'" class="pointer-events-none inline-block h-5 w-5 transform bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
 								</button>
 							</div>
 
-						</template>
-					</div>
+							<div class="flex items-center justify-between">
+								<span class="font-medium text-gray-700">Radiometric Calibration</span>
+								<button @click="config.doRadio = !config.doRadio" :class="config.doRadio ? 'bg-blue-600' : 'bg-gray-200'" class="relative inline-flex h-6 w-10 flex-shrink-0 cursor-pointer border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ring-offset-2">
+									<span :class="config.doRadio ? 'translate-x-5' : 'translate-x-0'" class="pointer-events-none inline-block h-5 w-5 transform bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
+								</button>
+							</div>
 
-					<div class="mt-8">
-						<button @click="runCalibration()" :disabled="running" class="cursor-pointer w-full bg-green-600 text-white font-bold py-3 px-4 shadow hover:bg-green-700 transition disabled:opacity-50 flex justify-center items-center">
-							<template x-if="!running">
-								<span>PROCESS</span>
-							</template>
-							<template x-if="running">
-								<div class="flex items-center">
-									<svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-									PROCESSING...
+							<div class="flex items-center justify-between" x-show="false && config.doRadio">
+								<span class="text-gray-700 text-xs">Auto-Detect Board</span>
+								<button @click="toggleAuto()" :class="config.autoRadio ? 'bg-blue-600' : 'bg-gray-200'" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ring-offset-2">
+									<span :class="config.autoRadio ? 'translate-x-5' : 'translate-x-0'" class="pointer-events-none inline-block h-5 w-5 transform bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
+								</button>
+							</div>
+
+							<div class="flex items-center" x-show="config.autoRadio && config.doRadio">
+								<label class="block text-gray-700 w-36 text-xs">Board Thickness</label>
+								<input type="number" x-model="config.autoRadioThickness" class="mt-1 block p-2 border text-xs w-20 lg:w-24 xl:w-48 2xl:w-96">
+								<p class="ml-2 mt-1 text-xs text-gray-500">(px)</br>0=auto</p>
+							</div>
+
+							<div class="flex items-center" x-show="config.doRadio">
+								<label class="block text-gray-700 w-36 text-xs">Board Template</label>
+								<input type="text" x-model="config.radioTemplatePath" class="block w-full p-2 border text-xs">
+								<button @click="$refs.radioTemplatePicker.click()" type="button" class="cursor-pointer h-8 ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Select File">
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+								</button>
+								<input type="file" x-ref="radioTemplatePicker" accept=".jpg,.jpeg,.png" class="hidden" @change="console.dir($event.target.files?.[0]);if($event.target.files.length) {config.radioTemplatePath = $event.target.files[0].name; $event.target.value = '';}">
+							</div>
+
+							<div class="flex items-center" x-show="config.doRadio">
+								<label class="block text-gray-700 w-36 text-xs">Reference CSV</label>
+								<input type="text" x-model="config.radioRefFile" class="block w-full p-2 border text-xs">
+								<button @click="$refs.radioRefPicker.click()" type="button" class="cursor-pointer h-8 ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Select File">
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+								</button>
+								<input type="file" x-ref="radioRefPicker" accept=".csv" class="hidden" @change="console.dir($event.target.files?.[0]);if($event.target.files.length) {config.radioRefFile = $event.target.files[0].name; $event.target.value = '';}">
+							</div>
+						</div>
+
+						<hr class="my-6">
+						<label class="block font-medium text-gray-700 w-36 my-2">Vegetation Indices:</label>
+						<div class="flex items-center" x-show="config.autoRadio && config.doRadio">
+							<label class="block text-gray-700 w-36 text-xs">Green centroid radius</label>
+							<input type="text" x-model="config.greenCentroidRadius" class="mt-1 block p-2 border text-xs w-20 lg:w-24 xl:w-48 2xl:w-96">
+							<p class="ml-2 mt-1 text-xs text-gray-500">(px)</br>0=disabled</p>
+						</div>
+						<div class="space-x-2 space-y-2 text-sm block">
+							<template x-for="vegIdx in Object.keys(config.calc)" :key="vegIdx">
+								<div class="inline-block h-6 w-11 flex-shrink-0">
+									<span x-text="vegIdx" class="text-xs"></span>
+									<button @click="config.calc[vegIdx] = !config.calc[vegIdx]" :class="config.calc[vegIdx] ? 'bg-green-600' : 'bg-gray-200'" class="relative inline-flex h-6 w-10 flex-shrink-0 cursor-pointer border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ring-offset-2">
+										<span :class="config.calc[vegIdx] ? 'translate-x-5' : 'translate-x-0'" class="pointer-events-none inline-block h-5 w-5 transform bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
+									</button>
 								</div>
+
 							</template>
-						</button>
+						</div>
+
+						<div class="mt-8">
+							<button @click="runCalibration()" :disabled="running" class="cursor-pointer w-full bg-green-600 text-white font-bold py-3 px-4 shadow hover:bg-green-700 transition disabled:opacity-50 flex justify-center items-center">
+								<template x-if="!running">
+									<span>PROCESS</span>
+								</template>
+								<template x-if="running">
+									<div class="flex items-center">
+										<svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+										PROCESSING...
+									</div>
+								</template>
+							</button>
+						</div>
 					</div>
 				</div>
 
@@ -149,7 +151,7 @@
 				</div> -->
 
 				<!-- Log View -->
-				<div class="border overflow-x-hidden h-min flex flex-col">
+				<div id="main-log" class="border overflow-x-hidden h-min flex flex-col">
 					<div class="bg-gray-50 px-4 py-2 border-b flex justify-between items-center">
 						<span class="text-sm font-semibold text-gray-700">Logs</span>
 						<button @click="logs = ''" class="text-xs text-gray-400 hover:text-gray-600">Clear</button>
@@ -162,13 +164,13 @@
 							<span class="text-gray-600">Waiting for process to start...</span>
 						</template> -->
 						<!-- <span x-text="logs"></span> -->
-						<textarea class="w-full h-64 mt-2" x-show="logs" x-model="logs"></textarea>
+						<textarea class="w-full h-96 mt-2" x-show="logs" x-model="logs"></textarea>
 					</div>
 				</div>
 			</div>
 
 			<!-- Output/Result Column -->
-			<div class="md:col-span-9 space-y-6">
+			<div id="main-output" class="md:col-span-9 space-y-6">
 				<div class="border min-h-96">
 					<!-- Tabs Header -->
 					<div class="flex border-b">
@@ -264,13 +266,70 @@
 		</div>
 
 		<!-- Image Modal -->
-		<div x-show="modalOpen" x-cloak class="fixed top-0 left-0 right-0 bottom-0 z-50 flex items-center justify-center p-4 bg-black" @keydown.escape.window="modalOpen = false">
-			<button @click="modalOpen = false" class="absolute top-4 right-4 text-white hover:text-gray-300">
+		<div id="main-lineprofile" x-show="modalOpen" x-cloak class="fixed top-0 left-0 right-0 bottom-0 z-20 flex items-center justify-center p-4 bg-black select-none" 
+			@keydown.escape.window="modalOpen = false"
+			@mousemove="doDraggingProfile($event)"
+			@mouseup="stopDraggingProfile()"
+		>
+			<button @click="modalOpen = false" class="absolute top-4 right-4 text-white hover:text-gray-300 z-20">
 				<svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
 			</button>
-			<div class="max-w-full max-h-full flex flex-col items-center">
-				<img :src="modalImage" class="max-w-full">
+			<div class="relative max-w-full max-h-full flex flex-col items-center">
+				<div class="relative inline-block">
+					<img :src="modalImage" class="max-w-full cursor-crosshair" @click="handleModalImageClick($event)" x-ref="modalImg">
+					<!-- Connecting Line -->
+					<template x-if="linePoints.length === 2">
+						<div class="absolute top-0 left-0 w-full h-full pointer-events-none overflow-visible opacity-50">
+							<svg class="w-full h-full">
+								<line :x1="linePoints[0].percentX + '%'" :y1="linePoints[0].percentY + '%'" 
+									  :x2="linePoints[1].percentX + '%'" :y2="linePoints[1].percentY + '%'" 
+									  stroke="white" stroke-width="1" stroke-dasharray="4" />
+								
+								<!-- Hover Marker on Line -->
+								<circle x-show="hoverMarkerPos"
+									:cx="hoverMarkerPos ? hoverMarkerPos.x : 0"
+									:cy="hoverMarkerPos ? hoverMarkerPos.y : 0"
+									r="2" fill="#4ade80" stroke="white" stroke-width="1" />
+							</svg>
+						</div>
+					</template>
+					
+					<!-- Line Markers -->
+					<template x-for="(p, i) in linePoints" :key="i">
+						<div class="absolute w-4 h-4 -ml-2 -mt-2 rounded-full flex items-center justify-center text-xs text-white font-bold pointer-events-none opacity-50"
+							:class="i==0 ? 'bg-blue-500' : 'bg-red-500'"
+							:style="`left: ${p.percentX}%; top: ${p.percentY}%;`"
+							x-text="(i+1)">
+						</div>
+					</template>
+					
+				</div>
 				<p class="text-white mt-4 font-semibold" x-text="modalTitle"></p>
+			</div>
+
+			<!-- Line Profile Overlay Modal -->
+			<div x-show="showProfileModal" x-cloak
+				 class="fixed z-30 bg-gray-900 border border-gray-700 overflow-hidden w-80 h-64 flex flex-col"
+				 :style="`left: ${profileModalPos.x}px; top: ${profileModalPos.y}px;`"
+			>
+				<div class="bg-gray-800 px-3 py-2 flex justify-between items-center cursor-move select-none"
+					 @mousedown="startDraggingProfile($event)">
+					<div class="flex items-center space-x-2">
+						<svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path></svg>
+						<span class="text-xs font-bold text-gray-300 uppercase" x-text="'Line Profile - ' + modalTitle"></span>
+					</div>
+					<button @click="showProfileModal = false" class="text-gray-500 hover:text-white">
+						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+					</button>
+				</div>
+				<div class="flex-1 p-4 bg-black relative">
+					<canvas x-ref="profileCanvas" width="300" height="200" class="w-full h-full cursor-crosshair"
+						@mousemove="handleProfileHover($event)"
+						@mouseleave="hoverIdx = null; drawProfilePlot()"
+					></canvas>
+					<div class="absolute bottom-1 right-2 text-xs text-gray-500" x-text="'Distance: ' + lineProfileDistance"></div>
+					<div class="absolute top-4 left-1 text-xs text-gray-500" style="writing-mode: vertical-rl; transform: rotate(180deg);">[0-255]</div>
+				</div>
 			</div>
 		</div>
 	</div>
@@ -332,6 +391,28 @@
 				reports: [],
 				selectedReport: '',
 				reportData: [],
+				showConfig: true,
+
+				// Line Profile state
+				linePoints: [],
+				showProfileModal: false,
+				profileModalPos: JSON.parse(localStorage.getItem('profileModalPos')) || { x: 50, y: 50 },
+				draggingProfileModal: false,
+				dragStart: { x: 0, y: 0 },
+				lineProfileData: [],
+				lineProfileDistance: 0,
+				hoverIdx: null,
+
+				get hoverMarkerPos() {
+					if (this.hoverIdx === null || this.lineProfileData.length < 2 || this.linePoints.length < 2) return null;
+					const p1 = this.linePoints[0];
+					const p2 = this.linePoints[1];
+					const ratio = this.hoverIdx / (this.lineProfileData.length - 1);
+					return {
+						x: (p1.percentX + (p2.percentX - p1.percentX) * ratio) + '%',
+						y: (p1.percentY + (p2.percentY - p1.percentY) * ratio) + '%'
+					};
+				},
 
 				get currentPath() {
 					return this.config.outDir + '/' + this.viewDir;
@@ -366,6 +447,7 @@
 
 				async runCalibration() {
 					this.running = true;
+					this.showConfig = false;
 					this.logs = "Starting calibration task...\n";
 
 					try {
@@ -494,6 +576,154 @@
 					this.modalImage = '/'/*IMPORTANT: relative path*/ + this.currentPath + '/' + file.name;
 					this.modalTitle = file.name;
 					this.modalOpen = true;
+					this.linePoints = [];
+					this.showProfileModal = false;
+				},
+
+				handleModalImageClick(e) {
+					const img = e.target;
+					const rect = img.getBoundingClientRect();
+					
+					const relX = (e.clientX - rect.left) / rect.width;
+					const relY = (e.clientY - rect.top) / rect.height;
+					
+					if (this.linePoints.length >= 2) {
+						this.linePoints = [];
+						this.showProfileModal = false;
+					}
+					
+					this.linePoints.push({
+						x: relX * img.naturalWidth,
+						y: relY * img.naturalHeight,
+						percentX: relX * 100,
+						percentY: relY * 100
+					});
+					
+					if (this.linePoints.length === 2) {
+						this.updateLineProfile();
+					}
+				},
+
+				updateLineProfile() {
+					const p1 = this.linePoints[0];
+					const p2 = this.linePoints[1];
+					
+					const canvas = document.createElement('canvas');
+					const img = this.$refs.modalImg;
+					canvas.width = img.naturalWidth;
+					canvas.height = img.naturalHeight;
+					const ctx = canvas.getContext('2d');
+					ctx.drawImage(img, 0, 0);
+					const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+					const data = imageData.data;
+					
+					const dx = p2.x - p1.x;
+					const dy = p2.y - p1.y;
+					const distance = Math.sqrt(dx*dx + dy*dy);
+					const steps = Math.ceil(distance);
+					
+					this.lineProfileDistance = distance;
+					this.lineProfileData = [];
+					for (let i = 0; i <= steps; i++) {
+						const t = i / steps;
+						const x = Math.round(p1.x + dx * t);
+						const y = Math.round(p1.y + dy * t);
+						
+						if (x >= 0 && x < canvas.width && y >= 0 && y < canvas.height) {
+							const idx = (y * canvas.width + x) * 4;
+							const gray = (data[idx] + data[idx+1] + data[idx+2]) / 3;
+							this.lineProfileData.push(gray);
+						}
+					}
+					
+					this.showProfileModal = true;
+					this.$nextTick(() => this.drawProfilePlot());
+				},
+
+				drawProfilePlot() {
+					const canvas = this.$refs.profileCanvas;
+					if (!canvas) return;
+					const ctx = canvas.getContext('2d');
+					const w = canvas.width;
+					const h = canvas.height;
+					
+					ctx.clearRect(0, 0, w, h);
+					
+					// Draw background grid
+					ctx.strokeStyle = '#333';
+					ctx.lineWidth = 0.5;
+					for(let i=1; i<4; i++) {
+						ctx.beginPath();
+						ctx.moveTo(0, h * i / 4);
+						ctx.lineTo(w, h * i / 4);
+						ctx.stroke();
+					}
+
+					const data = this.lineProfileData;
+					if (data.length === 0) return;
+					
+					ctx.beginPath();
+					ctx.strokeStyle = '#4ade80'; // green-400
+					ctx.lineWidth = 2;
+					
+					for (let i = 0; i < data.length; i++) {
+						const x = (i / (data.length - 1)) * w;
+						const y = h - (data[i] / 255) * h;
+						if (i === 0) ctx.moveTo(x, y);
+						else ctx.lineTo(x, y);
+					}
+					ctx.stroke();
+
+					// Draw hover indicator
+					if (this.hoverIdx !== null && this.hoverIdx >= 0 && this.hoverIdx < data.length) {
+						const x = (this.hoverIdx / (data.length - 1)) * w;
+						const y = h - (data[this.hoverIdx] / 255) * h;
+						
+						ctx.strokeStyle = 'white';
+						ctx.setLineDash([2, 2]);
+						ctx.beginPath();
+						ctx.moveTo(x, 0);
+						ctx.lineTo(x, h);
+						ctx.stroke();
+						ctx.setLineDash([]);
+						
+						ctx.fillStyle = '#4ade80';
+						ctx.beginPath();
+						ctx.arc(x, y, 4, 0, Math.PI * 2);
+						ctx.fill();
+						
+						ctx.fillStyle = 'white';
+						ctx.font = '10px sans-serif';
+						ctx.fillText(Math.round(data[this.hoverIdx]), x + 5, y - 5);
+					}
+				},
+
+				handleProfileHover(e) {
+					if (!this.lineProfileData.length) return;
+					const canvas = this.$refs.profileCanvas;
+					const rect = canvas.getBoundingClientRect();
+					const relX = (e.clientX - rect.left) / rect.width;
+					this.hoverIdx = Math.max(0, Math.min(this.lineProfileData.length - 1, Math.round(relX * (this.lineProfileData.length - 1))));
+					this.drawProfilePlot();
+				},
+
+				startDraggingProfile(e) {
+					this.draggingProfileModal = true;
+					this.dragStart = {
+						x: e.clientX - this.profileModalPos.x,
+						y: e.clientY - this.profileModalPos.y
+					};
+				},
+
+				doDraggingProfile(e) {
+					if (!this.draggingProfileModal) return;
+					this.profileModalPos.x = e.clientX - this.dragStart.x;
+					this.profileModalPos.y = e.clientY - this.dragStart.y;
+				},
+
+				stopDraggingProfile() {
+					this.draggingProfileModal = false;
+					localStorage.setItem('profileModalPos', JSON.stringify(this.profileModalPos));
 				},
 
 				init() {
