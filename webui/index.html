@@ -266,18 +266,34 @@
 		</div>
 
 		<!-- Image Modal -->
-		<div id="main-lineprofile" x-show="modalOpen" x-cloak class="fixed top-0 left-0 right-0 bottom-0 z-20 flex items-center justify-center p-4 bg-black select-none" 
+		<div id="main-image-modal" x-show="modalOpen" x-cloak class="fixed top-0 left-0 right-0 bottom-0 z-20 flex items-center justify-center p-4 bg-black select-none"
 			@keydown.escape.window="modalOpen = false"
 			@mousemove="doDraggingProfile($event)"
 			@mouseup="stopDraggingProfile()"
 		>
+			<!-- Opacity Control -->
+			<div class="absolute top-6 left-6 z-50 bg-gray-800 p-3 flex items-center gap-3">
+				<span class="text-xs text-white font-medium">Overlay Opacity</span>
+				<input type="range" min="0" max="100" x-model="overlayOpacity" class="w-32 accent-green-500">
+				<span class="text-xs text-white w-8 text-right" x-text="overlayOpacity + '%'"></span>
+			</div>
+
 			<button @click="modalOpen = false" class="absolute top-4 right-4 text-white hover:text-gray-300 z-20">
 				<svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
 			</button>
-			<div class="relative max-w-full max-h-full flex flex-col items-center">
-				<div class="relative inline-block">
-					<img :src="modalImage" class="max-w-full cursor-crosshair" @click="handleModalImageClick($event)" x-ref="modalImg">
+			<div class="relative max-w-[95vw] max-h-[95vh] flex flex-col items-center bg-gray-900/50 rounded-lg p-2">
+				<p class="text-white font-semibold" x-text="modalTitle"></p>
+				<div class="relative inline-block shadow-2xl rounded overflow-hidden bg-black" style="min-width: 300px; min-height: 200px;">
+					<!-- Bottom Layer: Anchor Image -->
+					<img :src="anchorPath" class="max-w-full max-h-[85vh] block select-none" 
+						 @error="$event.target.src = modalImage" alt="Anchor Image">
+					
+					<!-- Top Layer: Selected Image -->
+					<img :src="modalImage" class="absolute top-0 left-0 w-full h-full block select-none cursor-crosshair" 
+						 :style="'opacity: ' + (overlayOpacity/100)" @click="handleModalImageClick($event)" x-ref="modalImg" alt="Selected Image">
+
 					<!-- Connecting Line -->
+
 					<template x-if="linePoints.length === 2">
 						<div class="absolute top-0 left-0 w-full h-full pointer-events-none overflow-visible opacity-50">
 							<svg class="w-full h-full">
@@ -302,16 +318,13 @@
 							x-text="(i+1)">
 						</div>
 					</template>
-					
 				</div>
-				<p class="text-white mt-4 font-semibold" x-text="modalTitle"></p>
 			</div>
 
 			<!-- Line Profile Overlay Modal -->
-			<div x-show="showProfileModal" x-cloak
+			<div id="main-lineprofile" x-show="showProfileModal" x-cloak
 				 class="fixed z-30 bg-gray-900 border border-gray-700 overflow-hidden w-80 h-64 flex flex-col"
-				 :style="`left: ${profileModalPos.x}px; top: ${profileModalPos.y}px;`"
-			>
+				 :style="`left: ${profileModalPos.x}px; top: ${profileModalPos.y}px;`">
 				<div class="bg-gray-800 px-3 py-2 flex justify-between items-center cursor-move select-none"
 					 @mousedown="startDraggingProfile($event)">
 					<div class="flex items-center space-x-2">
@@ -377,7 +390,8 @@
 						TSAVI: false,
 						ATSAVI: false,
 						MSR: false,
-					}
+					},
+					rgPatternGroup: /[^_]+_\d{3}/,
 				},
 				running: false,
 				logs: '',
@@ -402,6 +416,25 @@
 				lineProfileData: [],
 				lineProfileDistance: 0,
 				hoverIdx: null,
+				overlayOpacity: 50,
+
+				get anchorPath() {
+					if (!this.modalTitle) return '';
+					
+					// Match DJI_XXX where XXX is the group number (e.g., DJI_097)
+					const match = this.modalTitle.match(this.config.rgPatternGroup);
+					if (!match) return this.modalImage; // Fallback if pattern doesn't match
+					
+					const prefix = match[0];
+					const anchorBase = prefix + '0.JPG'; // Always targets band 0
+					
+					// If alignment is enabled, look for .output/alignment/DJI_XXXX0.JPG.jpg
+					if (this.config.optimize) {
+						return '/.output/alignment/' + anchorBase + '.jpg';
+					}
+					// Otherwise look for raw input
+					return '/.input/' + anchorBase;
+				},
 
 				get hoverMarkerPos() {
 					if (this.hoverIdx === null || this.lineProfileData.length < 2 || this.linePoints.length < 2) return null;

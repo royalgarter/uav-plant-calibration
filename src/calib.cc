@@ -304,9 +304,11 @@ int main(int argc, char** argv) {
 			}
 
 			if (targetInfo) {
-				Mat raw = imread(targetInfo->path, IMREAD_UNCHANGED | IMREAD_ANYDEPTH | IMREAD_ANYCOLOR);
-				if (!raw.empty()) {
-					data.coeffs = getRadiometricCoeffs(raw, targetInfo->filename, radioInterval, autoRadioThickness, radioDir, radioTemplatePath);
+				Mat rawRef = imread(targetInfo->path, IMREAD_UNCHANGED | IMREAD_ANYDEPTH | IMREAD_ANYCOLOR);
+				if (!rawRef.empty()) {
+					// Use undistorted image for board detection (Step 2 needs consistent geometry)
+					Mat dewarpedRef = undistortImg(rawRef, *targetInfo);
+					data.coeffs = getRadiometricCoeffs(dewarpedRef, targetInfo->filename, radioInterval, autoRadioThickness, radioDir, radioTemplatePath);
 					
 					// Store anchor points from the reference image
 					Point p56 = data.coeffs.p56;
@@ -319,8 +321,28 @@ int main(int argc, char** argv) {
 						
 						// Collect DN values from all images in the group
 						for (auto& info : data.images) {
-							Mat img = imread(info.path, IMREAD_UNCHANGED | IMREAD_ANYDEPTH | IMREAD_ANYCOLOR);
-							if (img.empty()) continue;
+							Mat raw = imread(info.path, IMREAD_UNCHANGED | IMREAD_ANYDEPTH | IMREAD_ANYCOLOR);
+							if (raw.empty()) continue;
+
+							// Align to reference image geometry before collecting DNs
+							Mat dewarped = undistortImg(raw, info);
+							
+							Mat H_meta = Mat::eye(3, 3, CV_64F);
+							if (info.foundH) {
+								H_meta = info.H;
+							} else if (abs(info.relX) > 0.0001 || abs(info.relY) > 0.0001) {
+								H_meta.at<double>(0, 2) = info.relX;
+								H_meta.at<double>(1, 2) = info.relY;
+							}
+
+							double scaleX = (double)dewarpedRef.cols / dewarped.cols;
+							double scaleY = (double)dewarpedRef.rows / dewarped.rows;
+							Mat H_meta_ref = H_meta.clone();
+							H_meta_ref.col(0) *= (1.0 / scaleX);
+							H_meta_ref.col(1) *= (1.0 / scaleY);
+
+							Mat aligned;
+							warpPerspective(dewarped, aligned, H_meta_ref, dewarpedRef.size(), INTER_LINEAR | WARP_INVERSE_MAP);
 							
 							string stem = path(info.filename).stem().string();
 							if (stem.empty()) continue;
@@ -329,7 +351,7 @@ int main(int argc, char** argv) {
 							if (lastChar == '0') {
 								// RGB image - collect per-channel DN values
 								vector<double> dns_r, dns_g, dns_b;
-								collectDnValues(img, p56, p3, boxSize, true, dns_r, dns_g, dns_b);
+								collectDnValues(aligned, p56, p3, boxSize, true, dns_r, dns_g, dns_b);
 								data.rgbDns_r = dns_r;
 								data.rgbDns_g = dns_g;
 								data.rgbDns_b = dns_b;
@@ -339,7 +361,7 @@ int main(int argc, char** argv) {
 								// Multispectral image - collect single-band DN values
 								int band = lastChar - '0';
 								vector<double> dns_r, dns_g, dns_b;
-								collectDnValues(img, p56, p3, boxSize, false, dns_r, dns_g, dns_b);
+								collectDnValues(aligned, p56, p3, boxSize, false, dns_r, dns_g, dns_b);
 								data.multispectralDns[band] = dns_r;
 								gLog << "    Collected band " << band << " DN values from " << info.filename << endl;
 							}
