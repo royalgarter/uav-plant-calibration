@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>About — UAV Plant Calibration</title>
+	<link rel="stylesheet" type="text/css" href="/litewind.css" />
+	<link rel="icon" type="image/png" href="/favicon.png">
+	<style>
+		body { counter-reset: h2; }
+		h2 { counter-increment: h2; }
+		h2::before { content: counter(h2) ". "; }
+		.section { counter-reset: h3; }
+		h3 { counter-increment: h3; }
+		h3::before { content: counter(h2) "." counter(h3) " "; }
+		table.formula td { padding: 0.25rem 0.75rem; vertical-align: middle; }
+		table.formula tr:nth-child(even) { background: #f9fafb; }
+		code.formula { font-size: 0.85rem; }
+		.annotation { border-left: 3px solid #86efac; }
+	</style>
+</head>
+<body class="min-h-screen p-6 overflow-y-scroll bg-gray-50">
+	<div class="max-w-5xl mx-auto">
+
+		<!-- Header -->
+		<header class="flex justify-between items-center bg-white p-6 border mb-6">
+			<div class="flex items-center space-x-4">
+				<a href="/index.html" class="text-green-700 hover:text-green-800 font-bold text-sm border-r pr-4">&larr; Back</a>
+				<div>
+					<h1 class="text-2xl font-bold bg-green-100 text-green-700 px-3 py-1">UAV Phenomics Image Processing</h1>
+					<p class="text-gray-500 font-bold px-3">About the processing pipeline</p>
+				</div>
+			</div>
+			<div class="flex items-center space-x-2">
+				<img width="64" height="64" class="self-center w-16 h-16" src='/assets/logo-hcmus.png'>
+				<img width="64" height="64" class="self-center w-16 h-16 p-2" src='/assets/logo-bio.png'>
+				<img height="64" class="self-center h-16 py-6" style="filter: contrast(0.6);" src='/assets/logo-fit.png'>
+			</div>
+		</header>
+
+		<!-- 1. Overview -->
+		<section class="bg-white border p-6 mb-6 section">
+			<h2 class="text-xl font-bold text-gray-800 mb-3">Pipeline Overview</h2>
+			<p class="text-sm text-gray-600 leading-relaxed mb-4">
+				This software processes multispectral UAV imagery (DJI Phantom 4 Multispectral, P4M) through a 
+				four-stage pipeline: <strong class="text-gray-800">parsing &amp; dewarping</strong>, 
+				<strong class="text-gray-800">coarse-to-fine image alignment</strong>, 
+				<strong class="text-gray-800">radiometric calibration</strong> (optional), and 
+				<strong class="text-gray-800">vegetation index computation</strong>. 
+				The output is a set of co-registered, calibrated index maps together with CSV reports for quantitative analysis.
+			</p>
+			<div class="bg-gray-100 p-4 text-sm font-mono text-gray-700">
+				./calib &lt;input_dir&gt; &lt;output_dir&gt; [--radio] [--auto] [--optimize] [--veg-idx=ndvi,...] [--green-centroid-radius &lt;px&gt;]
+			</div>
+			<pre class="bg-gray-900 text-green-400 p-4 mt-4 text-xs leading-5 overflow-x-auto rounded">
+		                    ┌──────────────────────┐
+		                    │   Input images       │
+		                    │ (TIFF/JPEG, 6 bands) │
+		                    └──────┬───────────────┘
+		                           ▼
+		                    ┌──────────────────────┐
+		                    │ 1. Parse XMP metadata│
+		                    │    DewarpData + H    │
+		                    └──────┬───────────────┘
+		                           ▼
+		                    ┌──────────────────────┐
+		                    │ 2. Lens dewarping    │
+		                    │    (Brown-Conrady)   │
+		                    └──────┬───────────────┘
+		                           ▼
+		                    ┌──────────────────────────────────┐
+		                    │ 3. Coarse alignment (H_meta)     │
+		                    │  + Fine alignment (ECC / SIFT)   │
+		                    └──────┬───────────────────────────┘
+		                           ▼
+		                ┌──────────┴──────────┐
+		                ▼                     ▼
+		        ┌─────────────────┐  ┌─────────────────┐
+		        │ 4a. Radiometric │  │ 4b. Veg. index  │
+		        │    calibration  │  │   computation   │
+		        │    (optional)   │  │   + green mask  │
+		        └────────┬────────┘  └────────┬────────┘
+		                 ▼                    ▼
+		        ┌─────────────────┐  ┌─────────────────┐
+		        │ Aligned +       │  │ *_raw.tif       │
+		        │ radiometric .jpg│  │ *_u8.jpg        │
+		        │                 │  │ *_color.jpg     │
+		        └────────┬────────┘  └────────┬────────┘
+		                 ▼                    ▼
+		        ┌─────────────────────────────────────────┐
+		        │ 5. CSV reports                          │
+		        │    radiometric_report.csv               │
+		        │    vegetation_index_report.csv          │
+		        └─────────────────────────────────────────┘
+   			</pre>
+		</section>
+
+		<!-- 2. Input Data Convention -->
+		<section class="bg-white border p-6 mb-6 section">
+			<h2 class="text-xl font-bold text-gray-800 mb-3">Input Data Convention</h2>
+			<p class="text-sm text-gray-600 leading-relaxed mb-4">
+				Images are grouped by a common prefix (e.g. <code>DJI_097</code>). The last character of the 
+				stem encodes the spectral band:
+			</p>
+			<table class="w-full text-xs border mb-4">
+				<thead><tr class="bg-gray-100"><th class="p-2 border text-left">Suffix</th><th class="p-2 border text-left">Band</th><th class="p-2 border text-left">Alias</th></tr></thead>
+				<tbody>
+					<tr><td class="p-2 border"><code>0</code></td><td class="p-2 border">RGB composite</td><td class="p-2 border">—</td></tr>
+					<tr><td class="p-2 border"><code>1</code></td><td class="p-2 border">Blue</td><td class="p-2 border">475 nm centre</td></tr>
+					<tr><td class="p-2 border"><code>2</code></td><td class="p-2 border">Green</td><td class="p-2 border">560 nm centre</td></tr>
+					<tr><td class="p-2 border"><code>3</code></td><td class="p-2 border">Red</td><td class="p-2 border">650 nm centre</td></tr>
+					<tr><td class="p-2 border"><code>4</code></td><td class="p-2 border">Red edge</td><td class="p-2 border">730 nm centre</td></tr>
+					<tr><td class="p-2 border"><code>5</code></td><td class="p-2 border">Near-infrared (NIR)</td><td class="p-2 border">840 nm centre</td></tr>
+				</tbody>
+			</table>
+			<p class="text-xs text-gray-500">
+				Files are parsed as TIFF (preferred, XMP embedded) or JPEG (APP1 segment scanned for XMP). 
+				Group detection uses the prefix (stem minus last character).
+			</p>
+		</section>
+
+		<!-- 3. Preprocessing -->
+		<section class="bg-white border p-6 mb-6 section">
+			<h2 class="text-xl font-bold text-gray-800 mb-3">Preprocessing &amp; Alignment</h2>
+
+			<h3 class="text-base font-semibold text-gray-800 mt-4 mb-2">Metadata Parsing (XMP)</h3>
+			<p class="text-sm text-gray-600 leading-relaxed mb-3">
+				Each image contains DJI-specific XMP metadata that is extracted from the TIFF tag 700 
+				(or from the JPEG APP1 segment when a TIFF is unavailable). Regular-expression scanning extracts:
+			</p>
+			<ul class="text-sm text-gray-600 list-disc list-inside mb-4 space-y-1">
+				<li><strong>DewarpData</strong> — nine intrinsic / distortion parameters (<var>f<sub>x</sub></var>, <var>f<sub>y</sub></var>, <var>c<sub>x</sub></var>, <var>c<sub>y</sub></var>, <var>k<sub>1</sub></var>, <var>k<sub>2</sub></var>, <var>p<sub>1</sub></var>, <var>p<sub>2</sub></var>, <var>k<sub>3</sub></var>).</li>
+				<li><strong>CalibratedOpticalCenter</strong> — the principal-point offset determined by DJI factory calibration.</li>
+				<li><strong>RelativeOpticalCenter</strong> — per-image translation (<var>&Delta;x</var>, <var>&Delta;y</var>) relative to the group reference.</li>
+				<li><strong>DewarpHMatrix</strong> — a 3&times;3 homography that maps the sensor coordinate system to a common mosaic frame.</li>
+			</ul>
+
+			<h3 class="text-base font-semibold text-gray-800 mt-4 mb-2">Lens Dewarping</h3>
+			<p class="text-sm text-gray-600 leading-relaxed mb-3">
+				The DJI P4M has a significant fisheye lens. Using the extracted DewarpData, the image is 
+				undistorted via OpenCV&rsquo;s <code>cv::undistort</code> with a standard Brown&ndash;Conrady 
+				distortion model. The calibrated principal point is:
+			</p>
+			<div class="bg-gray-50 p-3 mb-3 text-sm font-mono">
+				c<sub>x</sub> = width / 2 &minus; dewarp_cx<br>
+				c<sub>y</sub> = height / 2 + dewarp_cy
+			</div>
+			<p class="text-sm text-gray-600 leading-relaxed mb-3">
+				The camera matrix <strong>K</strong> is built from (<var>f<sub>x</sub></var>, <var>f<sub>y</sub></var>, <var>c<sub>x</sub></var>, <var>c<sub>y</sub></var>) 
+				and the distortion vector <strong>D</strong> contains (<var>k<sub>1</sub></var>, <var>k<sub>2</sub></var>, <var>p<sub>1</sub></var>, <var>p<sub>2</sub></var>, <var>k<sub>3</sub></var>).
+			</p>
+
+			<h3 class="text-base font-semibold text-gray-800 mt-4 mb-2">Coarse Alignment (Metadata Homography)</h3>
+			<p class="text-sm text-gray-600 leading-relaxed mb-3">
+				Each image is first warped to the reference image geometry using the DJI-provided 
+				DewarpHMatrix (<strong>H</strong>). If no matrix is available, a pure translation is 
+				applied using the RelativeOpticalCenter values. This brings all bands into approximate 
+				pixel-level registration.
+			</p>
+
+			<h3 class="text-base font-semibold text-gray-800 mt-4 mb-2">Fine Alignment (ECC &amp; SIFT Fallback)</h3>
+			<p class="text-sm text-gray-600 leading-relaxed mb-3">
+				After the metadata warp, a correlation-based fine alignment is performed. The reference 
+				image and the warped target image are preprocessed by:
+			</p>
+			<ol class="text-sm text-gray-600 list-decimal list-inside mb-3 space-y-1">
+				<li>Converting to grayscale and applying <strong>CLAHE</strong> (contrast-limited adaptive histogram equalisation, clip-limit 2.0, 8&times;8 tiles).</li>
+				<li><strong>Gaussian blur</strong> (5&times;5 kernel) to suppress sensor noise.</li>
+				<li><strong>Scharr gradient</strong> magnitude (X and Y) to produce a polarity-free structural representation.</li>
+				<li>Min&ndash;max normalisation to [0, 1] for numerical stability.</li>
+			</ol>
+			<p class="text-sm text-gray-600 leading-relaxed mb-3">
+				The primary fine-registration method is <strong>Enhanced Correlation Coefficient (ECC)</strong>
+				maximisation with a homography motion model (<code>MOTION_HOMOGRAPHY</code>). If ECC fails 
+				to converge (e.g. due to poor initial alignment or low texture), a <strong>SIFT</strong> 
+				fallback is used:
+			</p>
+			<ul class="text-sm text-gray-600 list-disc list-inside mb-3 space-y-1">
+				<li>SIFT keypoints are detected on CLAHE-enhanced versions of both images.</li>
+				<li>Matches are filtered by Lowe&rsquo;s ratio test (threshold 0.75).</li>
+				<li>A homography is estimated from the surviving matches via <strong>RANSAC</strong>.</li>
+			</ul>
+			<p class="text-sm text-gray-600 leading-relaxed mb-3">
+				The <code>--optimize</code> flag enables performance tuning: images can be downscaled 
+				(<var>d</var>) before ECC and the result is scaled back by adjusting homography 
+				translation and perspective components:
+			</p>
+			<div class="bg-gray-50 p-3 mb-3 text-sm font-mono">
+				H<sub>full</sub> = S<sup>&minus;1</sup> &middot; H<sub>down</sub> &middot; S
+			</div>
+			<p class="text-sm text-gray-600 leading-relaxed">
+				Default optimisation parameters: downscale 2&times;, 50 iterations, &epsilon; = 10<sup>&minus;4</sup>.
+			</p>
+			<pre class="bg-gray-900 text-green-400 p-4 mt-4 text-xs leading-5 overflow-x-auto rounded">
+			     ┌──────────────┐    ┌──────────────┐
+			     │  Target      │    │  Reference   │
+			     │  image (Ti)  │    │  image (R)   │
+			     └──────┬───────┘    └──────┬───────┘
+			            ▼                   ▼
+			     ┌──────────────────────────────────┐
+			     │ Lens dewarping (Brown-Conrady)   │
+			     │ K + D -> cv::undistort           │
+			     └──────────────┬───────────────────┘
+			                    ▼
+			     ┌──────────────────────────────────┐
+			     │ Step A: Metadata warp (H_meta)   │
+			     │ DJI DewarpHMatrix or translation │
+			     └──────────────┬───────────────────┘
+			                    ▼
+			     ┌──────────────────────────────────┐
+			     │ Resolution matching              │
+			     │ scale Ti to R dimensions         │
+			     └──────────────┬───────────────────┘
+			                    ▼
+			     ┌───────────────────────────────────┐
+			     │ Feature extraction (prepareForECC)│
+			     │ CLAHE -> Gauss(5x5) -> Scharr     │
+			     │ grad magnitude -> normalise [0,1] │
+			     └──────────────┬────────────────────┘
+			                    ▼
+			     ┌───────────────────────────────────┐
+			     │ Primary: ECC maximisation         │
+			     │findTransformECC(MOTION_HOMOGRAPHY)│
+			     │                                   │
+			     │ If fails ───────────────────────► │
+			     │         ┌──────────────┐          │
+			     │         │ Fallback:    │          │
+			     │         │ SIFT + RANSAC│          │
+			     │         │ BFMatcher    │          │
+			     │         │ ratio 0.75   │          │
+			     │         └──────────────┘          │
+			     └──────────────┬────────────────────┘
+			                    ▼
+			     ┌──────────────────────────────────┐
+			     │ Compose: H_total = H_meta * H_ecc│
+			     │ (or H_meta * H_sift)             │
+			     └──────────────┬───────────────────┘
+			                    ▼
+			     ┌──────────────────────────────────┐
+			     │ Final warp & contrast stretch    │
+			     │ warpPerspective -> imwrite       │
+			     └──────────────────────────────────┘
+			</pre>
+		</section>
+
+		<!-- 4. Radiometric Calibration -->
+		<section class="bg-white border p-6 mb-6 section">
+			<h2 class="text-xl font-bold text-gray-800 mb-3">Radiometric Calibration</h2>
+			<p class="text-sm text-gray-600 leading-relaxed mb-3">
+				When <code>--radio</code> is enabled, raw digital numbers (DN) are converted to 
+				reflectance values using a linear model per band. A calibrated reflectance panel 
+				with four known patches (56.47%, 35.82%, 11.48%, 2.72% reflectance) is used as reference.
+			</p>
+
+			<h3 class="text-base font-semibold text-gray-800 mt-4 mb-2">Board Detection</h3>
+			<p class="text-sm text-gray-600 leading-relaxed mb-3">
+				With <code>--auto</code>, the board is located by <strong>template matching</strong> 
+				across multiple scales (0.2&ndash;2.0&times;, step 0.15) and four rotations (0&deg;, 90&deg;, 180&deg;, 270&deg;). 
+				The matching score is a weighted combination of:
+			</p>
+			<ul class="text-sm text-gray-600 list-disc list-inside mb-3 space-y-1">
+				<li>Normalised cross-correlation (<code>TM_CCOEFF_NORMED</code>) on <strong>raw intensity</strong>.</li>
+				<li>Normalised cross-correlation on the <strong>Sobel gradient magnitude</strong> (edge map).</li>
+			</ul>
+			<p class="text-sm text-gray-600 leading-relaxed mb-3">
+				Both channels are thresholded at zero (removing negative/inverted matches) and combined 
+				with equal weight (50/50). The best score must exceed 0.45. Once the board is found, two 
+				anchors — the 56% patch centre (<var>p</var><sub>56</sub>) and the 3% patch centre 
+				(<var>p</var><sub>3</sub>) — are computed relative to the template geometry, accounting for 
+				scale and rotation. The border thickness parameter <var>T</var> defines the inset from the 
+				template edges to the patch region.
+			</p>
+			<p class="text-sm text-gray-600 leading-relaxed mb-3">
+				If the board cannot be detected automatically (or <code>--auto</code> is not used), a 
+				manual two-click interface allows the user to pick <var>p</var><sub>56</sub> and <var>p</var><sub>3</sub> 
+				interactively.
+			</p>
+
+			<h3 class="text-base font-semibold text-gray-800 mt-4 mb-2">DN Collection &amp; Coefficient Estimation</h3>
+			<p class="text-sm text-gray-600 leading-relaxed mb-3">
+				Four anchor points are interpolated linearly between <var>p</var><sub>56</sub> and 
+				<var>p</var><sub>3</sub>. At each anchor, the mean pixel value is sampled from a 
+				5&times;5 box centred on the anchor:
+			</p>
+			<div class="bg-gray-50 p-3 mb-3 text-sm font-mono">
+				<var>p</var><sub>i</sub> = <var>p</var><sub>56</sub> + (<var>p</var><sub>3</sub> &minus; <var>p</var><sub>56</sub>) &times; i / 3, &ensp; i = 0, 1, 2, 3
+			</div>
+			<p class="text-sm text-gray-600 leading-relaxed mb-3">
+				The per-channel linear coefficients (<var>a</var>, <var>b</var>) are solved by 
+				<strong>ordinary least squares</strong> via singular value decomposition (SVD):
+			</p>
+			<div class="bg-gray-50 p-3 mb-3 text-sm font-mono">
+				reflectance<sub>i</sub> = a &middot; DN<sub>i</sub> + b, &ensp; i = 1..4
+			</div>
+			<p class="text-sm text-gray-600 leading-relaxed mb-3">
+				For RGB images (band&nbsp;0), independent coefficients are computed for each of the 
+				three channels (R, G, B). For multispectral bands (1&ndash;5), a single coefficient 
+				pair is estimated. The reference reflectance values are loaded from an external CSV 
+				(file keyed by band name: <code>5</code> for NIR, <code>3</code> for Red, 
+				<code>0R</code>/<code>0G</code>/<code>0B</code> for RGB channels, etc.).
+			</p>
+			<pre class="bg-gray-900 text-green-400 p-4 mt-4 text-xs leading-5 overflow-x-auto rounded">
+                           ┌────────────────────────────┐
+                           │  Radio. reference CSV      │
+                           │  bands: reflectances       │
+                           │  (56%, 36%, 11%, 3%)       │
+                           └────────────┬───────────────┘
+                                        ▼
+                    ┌──────────────────────────────────────────┐
+                    │ Auto-detect board?                       │
+                    │ Template match: scale 0.2-2.0, 4 rotates │
+                    │   Score = 0.5*TM_CCOEFF(intensity)       │
+                    │         + 0.5*TM_CCOEFF(Sobel gradient)  │
+                    │   Best > 0.45 ──► anchors p56, p3 found  │
+                    │   Otherwise ────► manual 2-click GUI     │
+                    └────────────────────┬─────────────────────┘
+                                         ▼
+                    ┌───────────────────────────────────────────┐
+                    │ Interpolate 4 anchor points               │
+                    │ p_i = p56 + (p3-p56) * i/3  (i=0..3)      │
+                    │ Sample mean DN in 5x5 box at each anchor  │
+                    └────────────────────┬──────────────────────┘
+                                         ▼
+                    ┌──────────────────────────────────────────┐
+                    │ For each band/channel:                   │
+                    │   Solve: reflectance_i = a*DN_i + b      │
+                    │   OLS via SVD over 4 points              │
+                    │                                          │
+                    │  RGB (band 0): a_r,b_r  a_g,b_g  a_b,b_b │
+                    │  MS  (band 1-5): single a,b per band     │
+                    └────────────────────┬─────────────────────┘
+                                         ▼
+                    ┌──────────────────────────────────────────┐
+                    │ Apply: calibrated = a * raw + b          │
+                    │ cv::convertTo(CV_64F)                    │
+                    │ Normalise to [0,255] -> save as .jpg     │
+                    └────────────────────┬─────────────────────┘
+                                         ▼
+                    ┌────────────────────────────────────────────┐
+                    │ Export radiometric_report.csv              │
+                    │ DN values per band/anchor + slope/intercept│
+                    └────────────────────────────────────────────┘
+               </pre>
+
+			<h3 class="text-base font-semibold text-gray-800 mt-4 mb-2">Application &amp; Visualisation</h3>
+			<p class="text-sm text-gray-600 leading-relaxed mb-3">
+				The linear transform is applied across the whole image with <code>cv::convertTo</code>. 
+				The resulting reflectance image is then contrast-stretched to [0, 255] for 8-bit 
+				visualisation. Both the raw (pre-calibration) aligned image and the radiometrically 
+				calibrated version are saved. A CSV report (<code>radiometric_report.csv</code>) 
+				summarises all collected DN values per band, per anchor point, along with the estimated 
+				slope and intercept.
+			</p>
+		</section>
+
+		<!-- 5. Vegetation Indices -->
+		<section class="bg-white border p-6 mb-6 section">
+			<h2 class="text-xl font-bold text-gray-800 mb-3">Vegetation Indices</h2>
+			<p class="text-sm text-gray-600 leading-relaxed mb-3">
+				Twenty-seven vegetation indices are available, covering a broad spectrum of physiological 
+				and structural vegetation properties. Each index is computed as a per-pixel floating-point 
+				formula. The result is constrained to [0, 1] (negative values clamped to zero, values 
+				above 1 clamped to 1). If a required band is missing, the index is silently skipped.
+			</p>
+
+			<table class="w-full text-xs border mb-6">
+				<thead><tr class="bg-gray-100"><th class="p-2 border text-left">Index</th><th class="p-2 border text-left">Name</th><th class="p-2 border text-left">Formula (simplified)</th><th class="p-2 border text-left">Bands</th></tr></thead>
+				<tbody>
+					<tr><td class="p-2 border font-mono">NDVI</td><td class="p-2 border">Normalised Difference Vegetation Index</td><td class="p-2 border font-mono">(N &minus; R) / (N + R)</td><td class="p-2 border">N, R</td></tr>
+					<tr><td class="p-2 border font-mono">SR (RVI)</td><td class="p-2 border">Simple Ratio</td><td class="p-2 border font-mono">N / R</td><td class="p-2 border">N, R</td></tr>
+					<tr><td class="p-2 border font-mono">RSR</td><td class="p-2 border">Reduced Simple Ratio</td><td class="p-2 border font-mono">SR &times; (1 &minus; (S1 &minus; S1<sub>min</sub>) / (S1<sub>max</sub> &minus; S1<sub>min</sub>))</td><td class="p-2 border">N, R, S1</td></tr>
+					<tr><td class="p-2 border font-mono">ARVI</td><td class="p-2 border">Atmospherically Resistant Vegetation Index</td><td class="p-2 border font-mono">(N &minus; RB) / (N + RB), RB = R &minus; &gamma;(B &minus; R)</td><td class="p-2 border">N, R, B</td></tr>
+					<tr><td class="p-2 border font-mono">AFRI1.6</td><td class="p-2 border">Aerosol Free Vegetation Index 1.6</td><td class="p-2 border font-mono">(N &minus; 0.66 S1) / (N + 0.66 S1)</td><td class="p-2 border">N, S1</td></tr>
+					<tr><td class="p-2 border font-mono">AFRI2.1</td><td class="p-2 border">Aerosol Free Vegetation Index 2.1</td><td class="p-2 border font-mono">(N &minus; 0.5 S2) / (N + 0.5 S2)</td><td class="p-2 border">N, S2</td></tr>
+					<tr><td class="p-2 border font-mono">VARI</td><td class="p-2 border">Visible Atmospherically Resistant Index</td><td class="p-2 border font-mono">(G &minus; R) / (G + R &minus; B)</td><td class="p-2 border">G, R, B</td></tr>
+					<tr><td class="p-2 border font-mono">TVI</td><td class="p-2 border">Triangular Vegetation Index</td><td class="p-2 border font-mono">0.5 (120 (N &minus; G) &minus; 200 (R &minus; G))</td><td class="p-2 border">N, G, R</td></tr>
+					<tr><td class="p-2 border font-mono">MSARVI</td><td class="p-2 border">Modified Soil Adjusted ARVI</td><td class="p-2 border font-mono">(2N + 1 &minus; sqrt((2N+1)&sup2; &minus; 8(N &minus; RB))) / 2</td><td class="p-2 border">N, R, B</td></tr>
+					<tr><td class="p-2 border font-mono">GEMI</td><td class="p-2 border">Global Environment Monitoring Index</td><td class="p-2 border font-mono">&eta;(1 &minus; 0.25&eta;) &minus; (R &minus; 0.125) / (1 &minus; R), &eta; = (2(N&sup2;&minus;R&sup2;)+1.5N+0.5R)/(N+R+0.5)</td><td class="p-2 border">N, R</td></tr>
+					<tr><td class="p-2 border font-mono">EVI</td><td class="p-2 border">Enhanced Vegetation Index</td><td class="p-2 border font-mono">2.5 (N &minus; R) / (N + 6R &minus; 7.5B + 1)</td><td class="p-2 border">N, R, B</td></tr>
+					<tr><td class="p-2 border font-mono">EVI2</td><td class="p-2 border">Enhanced Vegetation Index 2</td><td class="p-2 border font-mono">2.5 (N &minus; R) / (N + 2.4R + 1)</td><td class="p-2 border">N, R</td></tr>
+					<tr><td class="p-2 border font-mono">MCARI</td><td class="p-2 border">Modified Chlorophyll Absorption in Reflectance Index</td><td class="p-2 border font-mono">((RE &minus; R) &minus; 0.2 (RE &minus; G)) &times; (RE / R)</td><td class="p-2 border">RE, R, G</td></tr>
+					<tr><td class="p-2 border font-mono">OSAVI</td><td class="p-2 border">Optimised Soil Adjusted Vegetation Index</td><td class="p-2 border font-mono">1.16 (N &minus; R) / (N + R + 0.16)</td><td class="p-2 border">N, R</td></tr>
+					<tr><td class="p-2 border font-mono">SAVI</td><td class="p-2 border">Soil Adjusted Vegetation Index</td><td class="p-2 border font-mono">1.5 (N &minus; R) / (N + R + 0.5)</td><td class="p-2 border">N, R</td></tr>
+					<tr><td class="p-2 border font-mono">MSAVI</td><td class="p-2 border">Modified Soil Adjusted Vegetation Index</td><td class="p-2 border font-mono">(2N + 1 &minus; sqrt((2N+1)&sup2; &minus; 8(N &minus; R))) / 2</td><td class="p-2 border">N, R</td></tr>
+					<tr><td class="p-2 border font-mono">DVI</td><td class="p-2 border">Difference Vegetation Index</td><td class="p-2 border font-mono">N &minus; R</td><td class="p-2 border">N, R</td></tr>
+					<tr><td class="p-2 border font-mono">NRI</td><td class="p-2 border">Nitrogen Reflectance Index</td><td class="p-2 border font-mono">(R &minus; G) / (R + G)</td><td class="p-2 border">R, G</td></tr>
+					<tr><td class="p-2 border font-mono">NDRE</td><td class="p-2 border">Normalised Difference Red Edge Index</td><td class="p-2 border font-mono">(N &minus; RE) / (N + RE)</td><td class="p-2 border">N, RE</td></tr>
+					<tr><td class="p-2 border font-mono">GNDVI</td><td class="p-2 border">Green Normalised Difference Vegetation Index</td><td class="p-2 border font-mono">(N &minus; G) / (N + G)</td><td class="p-2 border">N, G</td></tr>
+					<tr><td class="p-2 border font-mono">CI<sub>green</sub></td><td class="p-2 border">Chlorophyll Index Green</td><td class="p-2 border font-mono">N / G &minus; 1</td><td class="p-2 border">N, G</td></tr>
+					<tr><td class="p-2 border font-mono">CI<sub>RE</sub></td><td class="p-2 border">Chlorophyll Index Red Edge</td><td class="p-2 border font-mono">N / RE &minus; 1</td><td class="p-2 border">N, RE</td></tr>
+					<tr><td class="p-2 border font-mono">IPVI</td><td class="p-2 border">Infrared Percentage Vegetation Index</td><td class="p-2 border font-mono">N / (N + R)</td><td class="p-2 border">N, R</td></tr>
+					<tr><td class="p-2 border font-mono">RDVI</td><td class="p-2 border">Renormalised Difference Vegetation Index</td><td class="p-2 border font-mono">(N &minus; R) / sqrt(N + R)</td><td class="p-2 border">N, R</td></tr>
+					<tr><td class="p-2 border font-mono">WDRVI</td><td class="p-2 border">Wide Dynamic Range Vegetation Index</td><td class="p-2 border font-mono">(&alpha;N &minus; R) / (&alpha;N + R), &alpha; = 0.1</td><td class="p-2 border">N, R</td></tr>
+					<tr><td class="p-2 border font-mono">WDVI</td><td class="p-2 border">Weighted Difference Vegetation Index</td><td class="p-2 border font-mono">N &minus; aR, a = 1.0</td><td class="p-2 border">N, R</td></tr>
+					<tr><td class="p-2 border font-mono">TSAVI</td><td class="p-2 border">Transformed Soil Adjusted Vegetation Index</td><td class="p-2 border font-mono">a(N &minus; aR &minus; b) / (R + aN &minus; ab + X(1 + a&sup2;))</td><td class="p-2 border">N, R</td></tr>
+					<tr><td class="p-2 border font-mono">ATSAVI</td><td class="p-2 border">Adjusted Transformed Soil Adjusted VI</td><td class="p-2 border font-mono">a(N &minus; aR &minus; b) / (aN + R &minus; ab + X(1 + a&sup2;))</td><td class="p-2 border">N, R</td></tr>
+					<tr><td class="p-2 border font-mono">MSR</td><td class="p-2 border">Modified Simple Ratio</td><td class="p-2 border font-mono">(N/R &minus; 1) / (sqrt(N/R) + 1)</td><td class="p-2 border">N, R</td></tr>
+				</tbody>
+			</table>
+			<p class="text-xs text-gray-500">
+				<strong>Band key:</strong> N = NIR (band 5, fallback band 4), R = Red (band 3, fallback band 2), 
+				G = Green (band 2, fallback band 1), B = Blue (band 1), RE = Red edge (band 4, fallback band 3), 
+				S1 = SWIR-1 (band 6), S2 = SWIR-2 (band 7). &epsilon; = 10<sup>&minus;6</sup> prevents division by zero.
+			</p>
+
+			<h3 class="text-base font-semibold text-gray-800 mt-4 mb-2">Green Masking Pipeline</h3>
+			<p class="text-sm text-gray-600 leading-relaxed mb-3">
+				A vegetation mask is computed from the RGB (band&nbsp;0) image and applied to all index 
+				calculations, isolating plant matter from soil and background. The mask is built in six stages:
+			</p>
+			<ol class="text-sm text-gray-600 list-decimal list-inside mb-3 space-y-2">
+				<li>
+					<strong>Plant index score.</strong> A custom spectral score 
+					<code>G + R &minus; 2B</code> is computed, normalised to [0, 255], and thresholded 
+					via <strong>Otsu</strong>.
+				</li>
+				<li>
+					<strong>GNDVI fusion.</strong> If NIR (band&nbsp;5) is available, GNDVI is computed 
+					and thresholded with Otsu. The two binary masks are combined: 
+					<code>mask = (index | GNDVI) &amp; AND(index, GNDVI)</code>. A weighted score 
+					<code>0.6 &middot; Index + 0.4 &middot; GNDVI</code> is also Otsu-thresholded and fused 
+					via OR.
+				</li>
+				<li>
+					<strong>HSV range filter.</strong> Pixels outside <code>H [18, 90]</code>, 
+					<code>S [25, 255]</code>, <code>V [30, 255]</code> are removed to eliminate 
+					non-vegetation hues (e.g. dark soil, sky).
+				</li>
+				<li>
+					<strong>Morphological cleanup.</strong> Median blur (3&times;3), morphological 
+					closing (3&times;3 ellipse), and dilation (3&times;3 ellipse, 1 iteration).
+				</li>
+				<li>
+					<strong>Statistical outlier filtering.</strong> Connected components smaller than 
+					15&thinsp;px are discarded. An area-weighted centroid and spread standard deviation 
+					are computed; blobs farther than <code>max(3&sigma;, 10% image width)</code> from the 
+					centroid are rejected. This eliminates isolated bright spots caused by specular 
+					reflections or non-plant material. The surviving contours are used to fit a 
+					<strong>convex hull</strong> (yellow), a <strong>rotated ellipse</strong> (red), 
+					and a <strong>centroid marker</strong> (blue cross) for visual verification.
+				</li>
+				<li>
+					<strong>Spatial focus (optional).</strong> When <code>--green-centroid-radius</code> 
+					is set, a circular mask centred on the vegetation centroid (or the image centre as 
+					fallback) restricts analysis to a radius <var>R</var>. When disabled, a 5% border 
+					margin is applied to avoid edge artefacts.
+				</li>
+			</ol>
+
+			<pre class="bg-gray-900 text-green-400 p-4 mt-4 text-xs leading-5 overflow-x-auto rounded">
+                    ┌───────────────────────────────┐
+                    │   RGB image (band 0)          │
+                    └──────────┬────────────────────┘
+                               ▼
+                    ┌──────────────────────────────┐     ┌──────────────────────┐
+                    │ 1. Plant index score         │     │ NIR band (5) avail?  │
+                    │    G + R - 2*B               │────►│ Yes ──► GNDVI        │
+                    │    Normalise + Otsu thresh   │     │        Otsu thresh   │
+                    └──────────┬───────────────────┘     └─────────┬────────────┘
+                               ▼                                   │
+                    ┌────────────────────────────┐                 │
+                    │ 2. Fuse masks              │◄────────────────┘
+                    │    OR(AND(idx,gndvi),      │
+                    │    Otsu(0.6*idx+0.4*gndvi))│
+                    └──────────┬─────────────────┘
+                               ▼
+                    ┌──────────────────────────────┐
+                    │ 3. HSV range filter          │
+                    │    H [18,90] S [25,255]      │
+                    │    V [30,255]                │
+                    └──────────┬───────────────────┘
+                               ▼
+                    ┌─────────────────────────────┐
+                    │ 4. Morphology               │
+                    │    medianBlur(3)            │
+                    │    close(ellipse 3x3)       │
+                    │    dilate(ellipse 3x3)      │
+                    └──────────┬──────────────────┘
+                               ▼
+                    ┌─────────────────────────────┐
+                    │ 5. Statistical filter       │
+                    │    Remove blobs < 15 px     │
+                    │    Area-weighted centroid   │
+                    │    Drop blobs > 3σ away     │
+                    │    Fit convex hull + ellipse│
+                    └──────────┬────────── ───────┘
+                               ▼
+                    ┌─────────────────────────────┐
+                    │ 6. Spatial focus            │
+                    │    --green-centroid-radius? │
+                    │    Yes ──► circle at        │
+                    │           centroid/centre   │
+                    │    No  ──► 5% border margin │
+                    └──────────┬──────────────────┘
+                               ▼
+                    ┌───────────────────────────────┐
+                    │ Final mask applied to all     │
+                    │ vegetation index calculations │
+                    │ non-mask pixels set to 0      │
+                    └───────────────────────────────┘
+               </pre>
+
+			<h3 class="text-base font-semibold text-gray-800 mt-4 mb-2">Output Products</h3>
+			<p class="text-sm text-gray-600 leading-relaxed mb-3">
+				For each selected vegetation index, three output files are written to 
+				<code>&lt;output_dir&gt;/vegetation_index/</code>:
+			</p>
+			<ul class="text-sm text-gray-600 list-disc list-inside mb-3 space-y-1">
+				<li><code>&lt;prefix&gt;_&lt;index&gt;_raw.tif</code> — 32-bit float GeoTIFF of the raw index values.</li>
+				<li><code>&lt;prefix&gt;_&lt;index&gt;_u8.jpg</code> — 8-bit contrast-stretched JPEG for quick browsing.</li>
+				<li><code>&lt;prefix&gt;_&lt;index&gt;_color.jpg</code> — Pseudocoloured JPEG using the <code>JET</code> colour map.</li>
+				<li><code>&lt;prefix&gt;_green_mask.tif</code> — RGB composite with the green mask overlay and geometric annotations (first index only).</li>
+				<li><code>&lt;prefix&gt;_mask.jpg</code> — Binary mask image.</li>
+			</ul>
+			<p class="text-sm text-gray-600 leading-relaxed">
+				A summary CSV (<code>vegetation_index_report.csv</code>) records the mean index value 
+				(over non-masked pixels) for every group and every requested index.
+			</p>
+		</section>
+
+		<!-- 6. UI Tools -->
+		<section class="bg-white border p-6 mb-6 section">
+			<h2 class="text-xl font-bold text-gray-800 mb-3">Web UI Tools</h2>
+
+			<h3 class="text-base font-semibold text-gray-800 mt-4 mb-2">Image Gallery</h3>
+			<p class="text-sm text-gray-600 leading-relaxed mb-3">
+				A folder selector lets you browse <strong>Correlation Alignment</strong>, 
+				<strong>Radiometric Calibration</strong>, and <strong>Vegetation Indices</strong> 
+				output directories. Images are loaded as thumbnails; clicking one opens the 
+				full-resolution viewer with overlay controls.
+			</p>
+
+			<h3 class="text-base font-semibold text-gray-800 mt-4 mb-2">Overlay Comparison</h3>
+			<p class="text-sm text-gray-600 leading-relaxed mb-3">
+				When a vegetation index image is opened, the <strong>anchor image</strong> 
+				(the processed RGB — band&nbsp;0 — from the alignment output) is loaded as the 
+				background layer. The selected index image is overlaid on top with an adjustable 
+				<strong>opacity slider</strong> (0–100%), enabling side-by-side visual comparison 
+				between the natural-colour reference and the index heat map.
+			</p>
+
+			<h3 class="text-base font-semibold text-gray-800 mt-4 mb-2">Line Profile Tool</h3>
+			<p class="text-sm text-gray-600 leading-relaxed mb-3">
+				Click two points on the overlay image to define a transect line. A floating modal 
+				draws a <strong>brightness profile</strong> along that line, plotting grayscale 
+				intensity (0–255) against distance. Hovering over the profile shows a marker on the 
+				image at the corresponding position and the exact pixel value. The profile modal can be 
+				dragged by its header and its position is persisted across sessions via 
+				<code>localStorage</code>.
+			</p>
+
+			<h3 class="text-base font-semibold text-gray-800 mt-4 mb-2">Reports Viewer</h3>
+			<p class="text-sm text-gray-600 leading-relaxed mb-3">
+				CSV files generated in the output directory are listed in the <strong>Reports</strong> 
+				tab. Selecting a file renders it as an HTML table for quick inspection of radiometric 
+				DN values and vegetation index averages.
+			</p>
+
+			<h3 class="text-base font-semibold text-gray-800 mt-4 mb-2">Log Streaming</h3>
+			<p class="text-sm text-gray-600 leading-relaxed mb-3">
+				When the <strong>PROCESS</strong> button is clicked, the backend executes the 
+				<code>calib</code> binary and streams its stdout line-by-line via a JSON-delimited 
+				HTTP response. The log area auto-scrolls to show the latest output, providing 
+				real-time feedback on the processing status.
+			</p>
+		</section>
+
+		<!-- 7. CSV Reports -->
+		<section class="bg-white border p-6 mb-6 section">
+			<h2 class="text-xl font-bold text-gray-800 mb-3">CSV Report Format</h2>
+
+			<h3 class="text-base font-semibold text-gray-800 mt-4 mb-2">Radiometric Report</h3>
+			<p class="text-sm text-gray-600 leading-relaxed mb-2">
+				<code>radiometric_report.csv</code> contains one row per image group. Columns:
+			</p>
+			<ul class="text-sm text-gray-600 list-disc list-inside mb-3 space-y-1">
+				<li><strong>Filename</strong> — the reference image filename for the group.</li>
+				<li><strong>DN_B1_P1–DN_B5_P4</strong> — DN values for each multispectral band (1–5) at each of the 4 anchor points.</li>
+				<li><strong>DN_RGB_R_P1–DN_RGB_B_P4</strong> — per-channel DN values for the RGB image (band&nbsp;0).</li>
+				<li><strong>Slope (a), Intercept (b)</strong> — the linear calibration coefficients (mean of RGB channels if applicable).</li>
+			</ul>
+
+			<h3 class="text-base font-semibold text-gray-800 mt-4 mb-2">Vegetation Index Report</h3>
+			<p class="text-sm text-gray-600 leading-relaxed mb-2">
+				<code>vegetation_index_report.csv</code> contains one row per image group. Columns:
+			</p>
+			<ul class="text-sm text-gray-600 list-disc list-inside mb-3 space-y-1">
+				<li><strong>Group prefix</strong> — the shared prefix (e.g. <code>DJI_097</code>).</li>
+				<li><strong>&lt;INDEX&gt;_Avg</strong> — one column per requested vegetation index containing the spatial mean over non-masked pixels.</li>
+			</ul>
+		</section>
+
+		<!-- 8. References -->
+		<section class="bg-white border p-6 mb-6 section">
+			<h2 class="text-xl font-bold text-gray-800 mb-3">References</h2>
+			<ul class="text-sm text-gray-600 list-disc list-inside space-y-1">
+				<li>DJI P4M XMP metadata specification — <code>drone-dji:DewarpData</code>, <code>drone-dji:DewarpHMatrix</code>.</li>
+				<li>OpenCV: Bradski, G. (2000). <em>The OpenCV Library.</em> Dr. Dobb&rsquo;s Journal of Software Tools.</li>
+				<li>ECC: Evangelidis, G. D. &amp; Psarakis, E. Z. (2008). <em>Parametric Image Alignment Using Enhanced Correlation Coefficient Maximization.</em> IEEE TPAMI 30(10).</li>
+				<li>SIFT: Lowe, D. G. (2004). <em>Distinctive Image Features from Scale-Invariant Keypoints.</em> IJCV 60(2).</li>
+				<li>Vegetation index formulations compiled from <a href="https://github.com/px39n/Awesome-Vegetation-Index" class="text-blue-600 underline">Awesome Vegetation Index</a>.</li>
+				<li>CLAHE: Zuiderveld, K. (1994). <em>Contrast Limited Adaptive Histogram Equalization.</em> Graphics Gems IV, pp. 474–485.</li>
+			</ul>
+		</section>
+
+		<footer class="text-center text-xs text-gray-400 py-4">
+			UAV Plant Calibration &mdash; University of Science, VNU-HCM
+		</footer>
+
+	</div>
+</body>
+</html>
