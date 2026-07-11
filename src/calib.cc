@@ -402,9 +402,9 @@ int main(int argc, char** argv) {
 			Mat rawRef = imread(data.refInfo->path, IMREAD_UNCHANGED | IMREAD_ANYDEPTH | IMREAD_ANYCOLOR);
 			if (!rawRef.empty()) {
 				Mat processedRef = rawRef;
-				if (doRadio && data.coeffs.valid) {
-					processedRef = applyRadiometricCalibration(rawRef, data.coeffs);
-				}
+				// if (doRadio && data.coeffs.valid) {
+				// 	processedRef = applyRadiometricCalibration(rawRef, data.coeffs);
+				// }
 				refMat = undistortImg(processedRef, *data.refInfo);
 			}
 		} else {
@@ -427,9 +427,9 @@ int main(int argc, char** argv) {
 			}
 
 			Mat processed = raw;
-			if (doRadio && data.coeffs.valid) {
-				processed = applyRadiometricCalibration(raw, data.coeffs);
-			}
+			// if (doRadio && data.coeffs.valid) {
+			// 	processed = applyRadiometricCalibration(raw, data.coeffs);
+			// }
 
 			// --- STEP A: DEWARP ALIGNMENT (Metadata) ---
 			ss << "    Step A: Dewarping..." << endl;
