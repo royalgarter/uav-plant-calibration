@@ -1232,28 +1232,28 @@ GreenMaskResults applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const 
 	}
 
 	// 5. FOCUS MASK
-	if (greenCentroidRadiusX > 0 || greenCentroidRadiusY > 0) {
-		Point center(combined_mask.cols / 2, combined_mask.rows / 2);
-		if (results.valid) {
-			center = (results.ellipse.size.width > 0) ? Point(results.ellipse.center) : Point(results.centroid);
-		}
-		int radius = std::min(greenCentroidRadiusX, greenCentroidRadiusY);
+	// if (greenCentroidRadiusX > 0 || greenCentroidRadiusY > 0) {
+	// 	Point center(combined_mask.cols / 2, combined_mask.rows / 2);
+	// 	if (results.valid) {
+	// 		center = (results.ellipse.size.width > 0) ? Point(results.ellipse.center) : Point(results.centroid);
+	// 	}
+	// 	int radius = std::min(greenCentroidRadiusX, greenCentroidRadiusY);
 
-		// Mat circleMask = Mat::zeros(combined_mask.size(), CV_8U);
-		// circle(circleMask, center, radius, Scalar(255), FILLED);
-		// bitwise_and(combined_mask, circleMask, combined_mask);
+	// 	// Mat circleMask = Mat::zeros(combined_mask.size(), CV_8U);
+	// 	// circle(circleMask, center, radius, Scalar(255), FILLED);
+	// 	// bitwise_and(combined_mask, circleMask, combined_mask);
 
-		combined_mask = Mat::zeros(combined_mask.size(), CV_8U);
-		circle(combined_mask, center, radius, Scalar(255), FILLED);
-	} else {
-		int w = combined_mask.cols; int h = combined_mask.rows;
-		int marginX = std::max(1, (int)std::round(w * 0.05));
-		int marginY = std::max(1, (int)std::round(h * 0.05));
-		Mat borderMask = Mat::zeros(combined_mask.size(), CV_8U);
-		Rect innerRect(marginX, marginY, std::max(0, w - 2 * marginX), std::max(0, h - 2 * marginY));
-		if (innerRect.width > 0 && innerRect.height > 0) borderMask(innerRect).setTo(255);
-		bitwise_and(combined_mask, borderMask, combined_mask);
-	}
+	// 	combined_mask = Mat::zeros(combined_mask.size(), CV_8U);
+	// 	circle(combined_mask, center, radius, Scalar(255), FILLED);
+	// } else {
+	// 	int w = combined_mask.cols; int h = combined_mask.rows;
+	// 	int marginX = std::max(1, (int)std::round(w * 0.05));
+	// 	int marginY = std::max(1, (int)std::round(h * 0.05));
+	// 	Mat borderMask = Mat::zeros(combined_mask.size(), CV_8U);
+	// 	Rect innerRect(marginX, marginY, std::max(0, w - 2 * marginX), std::max(0, h - 2 * marginY));
+	// 	if (innerRect.width > 0 && innerRect.height > 0) borderMask(innerRect).setTo(255);
+	// 	bitwise_and(combined_mask, borderMask, combined_mask);
+	// }
 
 	// Apply mask to index image
 	if (!indexImg.empty() && indexImg.size() == combined_mask.size()) {
