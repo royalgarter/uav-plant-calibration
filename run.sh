@@ -8,6 +8,8 @@ LIBS="-lstdc++ -lm "
 TIFFLIB="-L/home/linuxbrew/.linuxbrew/lib -ltiff"
 TIFFLIB_WIN="-ltiff -Ilibtiff -Ilibtiff/include -Llibtiff/lib"
 OPENCVLIB="$(pkg-config --cflags --libs opencv5)"
+# Runtime lib path for running the built binary on Linux (dynamically-linked OpenCV/TIFF)
+LD_LINUX="LD_LIBRARY_PATH=/home/linuxbrew/.linuxbrew/opt/opencv/lib:/home/linuxbrew/.linuxbrew/lib"
 OPENCVLIB_WIN="-Ic:/opencv -Ic:/opencv/include -Lc:/opencv/x64/mingw/lib/ -lopencv_core455 -lopencv_calib3d455 -lopencv_imgcodecs455 -lopencv_imgproc455 -lopencv_video455 -lopencv_highgui455 -lopencv_features2d455"
 RAYLIB="-Iraylib/include -Lraylib/lib -lraylib"
 WINGUILIB="-DWINGUI -lopengl32 -lgdi32 -lwinmm -lcomdlg32 -lcomctl32 -lole32 -lshell32 -luuid"
@@ -36,8 +38,9 @@ case "$1" in
         ./run.sh build:calib;
         ./run.sh build:calib-win;
         ./run.sh build:calib-win-gui;
-        ./run.sh build:calib-webui;
-        ./run.sh build:calib-webui-win;
+        # DEPRECATED: native C web server (mongoose). Use NodeJS webui instead.
+        # ./run.sh build:calib-webui;
+        # ./run.sh build:calib-webui-win;
         ;;
 
     ###############################################################################################
@@ -46,6 +49,7 @@ case "$1" in
         run_cmd $CC $CFLAGS src/calib.cc src/calib-func.cc -o calib $LIBS $TIFFLIB $OPENCVLIB
         find . -type f -name "calib" -executable
         ;;
+    # DEPRECATED: native C web server (mongoose). Use NodeJS webui (`webui/server.js`) instead.
     "build:calib-webui")
         run_cmd $CC $CFLAGS src/calib-web.cc src/mongoose.c src/cJSON.c -o calib-web $LIBS
         find . -type f -name "calib-web" -executable
@@ -57,6 +61,7 @@ case "$1" in
         run_cmd $CC $CFLAGS src/calib.cc src/calib-func.cc -o window_build/calib.exe $LIBS $TIFFLIB_WIN $OPENCVLIB_WIN
         find . -type f -name "calib.exe"
         ;;
+    # DEPRECATED: native C web server (mongoose). Use NodeJS webui (`webui/server.js`) instead.
     "build:calib-webui-win")
         run_cmd $CC $CFLAGS src/calib-web.cc src/mongoose.c src/cJSON.c -o window_build/calib-web.exe $LIBS -lws2_32
         find . -type f -name "calib-web.exe"
@@ -69,13 +74,13 @@ case "$1" in
     ###############################################################################################
     
     "example:calib")
-        run_cmd ./calib .input .output --optimize --green-centroid-radius 150,150
+        run_cmd env $LD_LINUX ./calib .input .output --optimize --green-centroid-radius 500,400
         ;;
     "example:calib-radio")
-        run_cmd ./calib .input .output --optimize --green-centroid-radius 500,400 --radio 0,25
+        run_cmd env $LD_LINUX ./calib .input .output --optimize --green-centroid-radius 500,400 --radio 0,25
         ;;
     "example:calib-auto")
-        run_cmd ./calib .input .output --optimize --green-centroid-radius 500,400 --radio --auto 10 --ref .input_ref/radiometric_reference.csv --template .input_ref/radiometric_board.jpg
+        run_cmd env $LD_LINUX ./calib .input .output --optimize --green-centroid-radius 500,400 --radio --auto 10 --ref .input_ref/radiometric_reference.csv --template .input_ref/radiometric_board.jpg
         ;;
     
     ###############################################################################################

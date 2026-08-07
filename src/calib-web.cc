@@ -1,3 +1,7 @@
+// DEPRECATED: native C web server (mongoose) is no longer used.
+// The web UI is served by `webui/server.js` running on a lightweight NodeJS
+// binary (see webui/ and `calib-web-node.bat`). Keep this file only as
+// reference; do not extend or rebuild it.
 #include "mongoose.h"
 #include "cJSON.h"
 #include <stdio.h>

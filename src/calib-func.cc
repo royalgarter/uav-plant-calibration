@@ -1043,224 +1043,224 @@ Mat calculateVegIndex(const string& type, const map<int, Mat>& bands, const Mat&
 	return result;
 }
 
+// ============================================================================
+// HELPER 1: Background Subtraction (Concrete vs. Non-Concrete)
+// ============================================================================
+static Mat computeNonConcreteMask(const Mat& rgbImg) {
+	// Concrete floor is grey: Low Saturation (S in HSV) and Low Color Variance (|R-G|, |G-B|)
+	Mat hsv, nonConcreteMask;
+	cvtColor(rgbImg, hsv, COLOR_BGR2HSV);
+
+	vector<Mat> hsvChannels;
+	split(hsv, hsvChannels);
+	Mat saturation = hsvChannels[1]; // S channel
+
+	// 1. Saturation threshold: Concrete S is typically < 20 (scale 0-255)
+	Mat highSatMask = saturation > 22;
+
+	// 2. Channel Delta Check: max(R,G,B) - min(R,G,B)
+	vector<Mat> bgr;
+	split(rgbImg, bgr);
+	Mat maxBGR, minBGR, chroma;
+	max(bgr[0], max(bgr[1], bgr[2]), maxBGR);
+	min(bgr[0], min(bgr[1], bgr[2]), minBGR);
+	chroma = maxBGR - minBGR;
+
+	Mat chromaMask = chroma > 12; // True if there is actual color hue
+
+	// Combine: A pixel is non-concrete if it has sufficient saturation OR chroma
+	bitwise_or(highSatMask, chromaMask, nonConcreteMask);
+	return nonConcreteMask;
+}
+
+// ============================================================================
+// HELPER 2: Texture / High-Frequency Variance Filtering
+// ============================================================================
+static Mat computeSmoothTextureMask(const Mat& rgbImg, double maxTextureThresh = 32.0) {
+	Mat gray, lap, absLap, localTexture;
+	cvtColor(rgbImg, gray, COLOR_BGR2GRAY);
+
+	// Laplacian calculates spatial intensity gradients
+	Laplacian(gray, lap, CV_32F, 3);
+	convertScaleAbs(lap, absLap);
+
+	// Blur to compute local gradient density (moss/concrete = high gradient variance)
+	blur(absLap, localTexture, Size(7, 7));
+
+	Mat smoothMask;
+	// Keep pixels with low local gradient variance (smooth leaf surfaces)
+	threshold(localTexture, smoothMask, maxTextureThresh, 255, THRESH_BINARY_INV);
+	return smoothMask;
+}
+
+// ============================================================================
+// HELPER 3: Low-NDVI Thresholding (Supports Yellow / Stressed Leaves)
+// ============================================================================
+static Mat computeLowNDVIMask(const map<int, Mat>& bands, Size targetSize, float lowNdviThresh = 0.12f) {
+	const float eps = 1e-6f;
+	Mat ndviMask;
+
+	// Band 5 = NIR, Band 3 = Red (or Band 2 Green fallback)
+	if (bands.count(5) && (bands.count(3) || bands.count(2))) {
+		Mat NIR = bands.at(5).clone();
+		Mat red = bands.count(3) ? bands.at(3).clone() : bands.at(2).clone();
+
+		if (NIR.channels() == 1 && red.channels() == 1) {
+			resize(NIR, NIR, targetSize);
+			resize(red, red, targetSize);
+
+			Mat NIRf, redf;
+			NIR.convertTo(NIRf, CV_32F);
+			red.convertTo(redf, CV_32F);
+
+			// Compute NDVI = (NIR - Red) / (NIR + Red)
+			Mat NDVI = (NIRf - redf) / (NIRf + redf + eps);
+
+			// Low threshold (0.12 - 0.15): Captures yellow/stressed leaves while excluding concrete (~0.02)
+			Mat ndvi8;
+			threshold(NDVI, ndvi8, lowNdviThresh, 255, THRESH_BINARY);
+			ndvi8.convertTo(ndviMask, CV_8U);
+			return ndviMask;
+		}
+	}
+
+	// Return empty if multispectral bands are missing
+	return Mat();
+}
+
 GreenMaskResults applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const string& outputDir, const string& prefix, const string& indexName, const map<int, Mat>& bands, int greenCentroidRadiusX, int greenCentroidRadiusY) {
 	GreenMaskResults results;
 	if (rgbImg.empty()) return results;
 
-	gLog << "  INFO: greenCentroidRadiusX=" << greenCentroidRadiusX << ", Y=" << greenCentroidRadiusY << endl;
+	// ------------------------------------------------------------------------
+	// STEP 1: Background Subtraction & Low-NDVI & Texture Masks
+	// ------------------------------------------------------------------------
+	Mat nonConcreteMask = computeNonConcreteMask(rgbImg);
+	Mat smoothTextureMask = computeSmoothTextureMask(rgbImg, 32.0);
+	Mat ndviMask = computeLowNDVIMask(bands, rgbImg.size(), 0.12f);
 
-	// Convert BGR to float channels
-	Mat rgbf; rgbImg.convertTo(rgbf, CV_32F);
-	vector<Mat> bgr; split(rgbf, bgr);
-	Mat B = bgr[0]; Mat G = bgr[1]; Mat R = bgr[2];
-	const float eps = 1e-6f;
-
-	// 1. MODIFIED VEGETATION INDEX:
-	Mat PlantIndex = G + R - 2.0f * B;
-
-	// Normalize PlantIndex for thresholding
-	Mat PlantIndex_norm; normalize(PlantIndex, PlantIndex_norm, 0.0f, 255.0f, NORM_MINMAX);
-	Mat PlantIndex8; PlantIndex_norm.convertTo(PlantIndex8, CV_8U);
-
-	// Otsu threshold on the new Plant Index
-	Mat maskPlantIndex; threshold(PlantIndex8, maskPlantIndex, 0, 255, THRESH_BINARY | THRESH_OTSU);
-
-	// Prepare combined mask; try to use NIR-based GNDVI if available
-	Mat combined_mask = Mat::zeros(PlantIndex8.size(), CV_8U);
-	bool hasNIR = false;
-	Mat maskGNDVI;
-	Mat GNDVI_norm;
-
-	if (bands.count(5)) {
-		Mat NIR = bands.at(5).clone();
-		if (!NIR.empty()) {
-			if (NIR.channels() > 1) {
-				double minVal, maxVal; minMaxLoc(NIR, &minVal, &maxVal);
-				cout << "    Warning: Band 5 has unexpected properties. Ignoring NIR for GNDVI." << endl;
-			} else {
-				cv::resize(NIR, NIR, PlantIndex8.size());
-				Mat NIRf; NIR.convertTo(NIRf, CV_32F);
-
-				if (NIRf.total() > 0) {
-					Mat flat = NIRf.reshape(1, (int)NIRf.total());
-					Mat sorted;
-					cv::sort(flat, sorted, SORT_EVERY_COLUMN + SORT_ASCENDING);
-					int total = sorted.rows;
-					int idx2 = std::max(0, (int)std::round(total * 0.02f));
-					int idx98 = std::min(total - 1, (int)std::round(total * 0.98f));
-					float p2 = sorted.at<float>(idx2);
-					float p98 = sorted.at<float>(idx98);
-					if (p98 <= p2) {
-						p2 = sorted.at<float>(0);
-						p98 = sorted.at<float>(std::min(total - 1, 1));
-					}
-
-					Mat NIRclipped = NIRf.clone();
-					Mat lowMask = NIRf < p2;
-					Mat highMask = NIRf > p98;
-					NIRclipped.setTo(p2, lowMask);
-					NIRclipped.setTo(p98, highMask);
-
-					Mat Gf; G.convertTo(Gf, CV_32F);
-					Mat GNDVI = (NIRclipped - Gf) / (NIRclipped + Gf + eps);
-
-					normalize(GNDVI, GNDVI_norm, 0.0f, 255.0f, NORM_MINMAX);
-					Mat GNDVI8; GNDVI_norm.convertTo(GNDVI8, CV_8U);
-
-					threshold(GNDVI8, maskGNDVI, 0, 255, THRESH_BINARY | THRESH_OTSU);
-					hasNIR = true;
-				}
-			}
-		}
-	}
-
-	if (hasNIR) {
-		Mat score;
-		Mat Plant_n32; PlantIndex_norm.convertTo(Plant_n32, CV_32F);
-		Mat GNDVI_n32; GNDVI_norm.convertTo(GNDVI_n32, CV_32F);
-
-		float alpha = 0.6f, beta = 0.4f;
-		score = alpha * Plant_n32 + beta * GNDVI_n32;
-
-		Mat score8; score.convertTo(score8, CV_8U);
-		Mat maskScore; threshold(score8, maskScore, 0, 255, THRESH_BINARY | THRESH_OTSU);
-
-		bitwise_and(maskPlantIndex, maskGNDVI, combined_mask);
-		bitwise_or(combined_mask, maskScore, combined_mask);
+	Mat candidateMask;
+	if (!ndviMask.empty()) {
+		// Primary route: Combine Low-NDVI with Non-Concrete and Texture filters
+		bitwise_and(nonConcreteMask, ndviMask, candidateMask);
+		bitwise_and(candidateMask, smoothTextureMask, candidateMask);
 	} else {
-		combined_mask = maskPlantIndex;
+		// Fallback route (RGB only): Non-Concrete + Texture + Color
+		Mat rgbf; rgbImg.convertTo(rgbf, CV_32F);
+		vector<Mat> bgr; split(rgbf, bgr);
+		Mat PlantIndex = bgr[1] + bgr[2] - 2.0f * bgr[0]; // G + R - 2B
+
+		Mat PlantIndex_norm, PlantIndex8;
+		normalize(PlantIndex, PlantIndex_norm, 0.0f, 255.0f, NORM_MINMAX);
+		PlantIndex_norm.convertTo(PlantIndex8, CV_8U);
+
+		Mat rgbColorMask;
+		threshold(PlantIndex8, rgbColorMask, 0, 255, THRESH_BINARY | THRESH_OTSU);
+
+		bitwise_and(nonConcreteMask, rgbColorMask, candidateMask);
+		bitwise_and(candidateMask, smoothTextureMask, candidateMask);
 	}
 
-	// 2. HSV RANGE
-	Mat hsv; cvtColor(rgbImg, hsv, COLOR_BGR2HSV);
-	Mat hsv_mask;
-	inRange(hsv, Scalar(18, 25, 30), Scalar(90, 255, 255), hsv_mask);
+	// ------------------------------------------------------------------------
+	// STEP 1b: ROI Mask From Green Centroid Radius (drop border noise/out-of-focus)
+	// ------------------------------------------------------------------------
+	if (greenCentroidRadiusX > 0 && greenCentroidRadiusY > 0) {
+		Mat roiMask = Mat::zeros(candidateMask.size(), CV_8U);
+		ellipse(roiMask, Point(candidateMask.cols / 2, candidateMask.rows / 2),
+		        Size(greenCentroidRadiusX, greenCentroidRadiusY), 0, 0, 360, Scalar(255), FILLED);
+		bitwise_and(candidateMask, roiMask, candidateMask);
+	}
 
-	bitwise_and(combined_mask, hsv_mask, combined_mask);
+	// ------------------------------------------------------------------------
+	// STEP 2: Stronger Morphological Opening (Erosion before Dilation)
+	// ------------------------------------------------------------------------
+	// Median blur to remove point noise
+	medianBlur(candidateMask, candidateMask, 5);
 
-	// 3. MORPHOLOGY
-	medianBlur(combined_mask, combined_mask, 3);
-	Mat kernelClose = getStructuringElement(MORPH_ELLIPSE, Size(3, 3));
-	morphologyEx(combined_mask, combined_mask, MORPH_CLOSE, kernelClose);
-	Mat kernelDilate = getStructuringElement(MORPH_ELLIPSE, Size(3, 3));
-	dilate(combined_mask, combined_mask, kernelDilate, Point(-1, -1), 1);
+	// OPENING (Erosion -> Dilation) with 7x7 kernel: Destroys fine moss bridges
+	Mat kernelOpen = getStructuringElement(MORPH_ELLIPSE, Size(7, 7));
+	morphologyEx(candidateMask, candidateMask, MORPH_OPEN, kernelOpen);
 
-	// 4. STATISTICAL OUTLIER FILTERING & METRICS CALCULATION
+	// CLOSING with 5x5 kernel: Fills small internal leaf gaps
+	Mat kernelClose = getStructuringElement(MORPH_ELLIPSE, Size(5, 5));
+	morphologyEx(candidateMask, candidateMask, MORPH_CLOSE, kernelClose);
+
+	// ------------------------------------------------------------------------
+	// STEP 3: Dynamic Adaptive Area & Solidity / Compactness Filtering
+	// ------------------------------------------------------------------------
 	vector<vector<Point>> contours;
-	findContours(combined_mask, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+	findContours(candidateMask, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+
+	// Dynamic Minimum Area Threshold (0.15% of total image pixels)
+	double minAreaThreshold = rgbImg.cols * rgbImg.rows * 0.0015;
 
 	struct ContourData {
 		int index;
 		double area;
+		double solidity;
 		Point2f centroid;
 	};
 
 	vector<ContourData> validContours;
-	double tempTotalArea = 0;
-	Point2f tempCentroid(0, 0);
+	double totalValidArea = 0;
+	Point2f weightedCentroid(0, 0);
+	vector<Point> allPlantPoints;
 
-	// --- PASS 1: Gather valid blobs and compute Temporary Centroid ---
-	for (int i = 0; i < contours.size(); i++) {
+	Mat filteredMask = Mat::zeros(candidateMask.size(), CV_8U);
+
+	for (int i = 0; i < (int)contours.size(); i++) {
 		double area = contourArea(contours[i]);
-		if (area > 15) { // Filter out microscopic 1-2 pixel noise right away
-			Moments mu = moments(contours[i]);
-			Point2f centroid(mu.m10 / (mu.m00 + 1e-6), mu.m01 / (mu.m00 + 1e-6));
-			
-			validContours.push_back({i, area, centroid});
-			tempTotalArea += area;
-			tempCentroid += centroid * (float)area;
+
+		if (area >= minAreaThreshold) {
+			// Calculate Solidity = Area / Convex Hull Area
+			vector<Point> hull;
+			convexHull(contours[i], hull);
+			double hullArea = contourArea(hull);
+			double solidity = (hullArea > 0) ? (area / hullArea) : 0.0;
+
+			// Solidity filter: Moss/scattered noise < 0.50, Foliage/Canopy >= 0.50
+			if (solidity >= 0.50) {
+				Moments mu = moments(contours[i]);
+				Point2f centroid(mu.m10 / (mu.m00 + 1e-6), mu.m01 / (mu.m00 + 1e-6));
+
+				validContours.push_back({i, area, solidity, centroid});
+
+				// Draw valid plant contour to final mask
+				drawContours(filteredMask, contours, i, Scalar(255), FILLED);
+
+				totalValidArea += area;
+				weightedCentroid += centroid * (float)area;
+
+				for (const auto& p : contours[i]) {
+					allPlantPoints.push_back(p);
+				}
+			}
 		}
 	}
 
-	Mat filtered_mask = Mat::zeros(combined_mask.size(), CV_8U);
-	results.valid = false;
+	// ------------------------------------------------------------------------
+	// STEP 4: Results & Output Construction
+	// ------------------------------------------------------------------------
+	if (totalValidArea > 0) {
+		results.mask = filteredMask;
+		results.totalArea = totalValidArea;
+		results.centroid = weightedCentroid / (float)(totalValidArea + 1e-6);
+		results.valid = true;
 
-	if (tempTotalArea > 0) {
-		// Finalize temporary centroid
-		tempCentroid /= (float)tempTotalArea;
-
-		// Calculate the area-weighted Standard Deviation of the plant's spread
-		double variance_dist = 0;
-		for (const auto& cd : validContours) {
-			double dist = norm(cd.centroid - tempCentroid);
-			variance_dist += cd.area * (dist * dist);
-		}
-		double stddev_dist = sqrt(variance_dist / tempTotalArea);
-
-		// Dynamic max distance threshold: 
-		// Allow blobs within 3 standard deviations, but ensure a minimum radius 
-		// (e.g., 10% of image width) so we don't over-crop very compact plants.
-		double max_allowed_dist = std::max(3.0 * stddev_dist, (double)(combined_mask.cols * 0.10));
-
-		// --- PASS 2: Filter Outliers and Calculate Final Metrics ---
-		vector<Point> allPoints;
-		double finalTotalArea = 0;
-		Point2f finalCentroid(0, 0);
-
-		for (const auto& cd : validContours) {
-			double dist = norm(cd.centroid - tempCentroid);
-			
-			// If blob is within the acceptable spread, keep it
-			if (dist <= max_allowed_dist) {
-				drawContours(filtered_mask, contours, cd.index, Scalar(255), FILLED);
-				
-				for (const auto& p : contours[cd.index]) {
-					allPoints.push_back(p);
-				}
-				
-				finalTotalArea += cd.area;
-				finalCentroid += cd.centroid * (float)cd.area;
-			}
-		}
-
-		// Apply final calculations
-		if (finalTotalArea > 0) {
-			combined_mask = filtered_mask;
-			results.totalArea = finalTotalArea;
-			results.centroid = finalCentroid / (float)(finalTotalArea + 1e-6);
-			results.valid = true;
-
-			if (allPoints.size() >= 5) {
-				convexHull(allPoints, results.convexHull);
-				results.ellipse = fitEllipse(allPoints);
-			}
-		} else {
-			combined_mask = Mat::zeros(combined_mask.size(), CV_8U);
+		if (allPlantPoints.size() >= 5) {
+			convexHull(allPlantPoints, results.convexHull);
+			results.ellipse = fitEllipse(allPlantPoints);
 		}
 	} else {
-		combined_mask = Mat::zeros(combined_mask.size(), CV_8U);
+		results.mask = Mat::zeros(candidateMask.size(), CV_8U);
+		results.valid = false;
 	}
 
-	// 5. FOCUS MASK
-	// if (greenCentroidRadiusX > 0 || greenCentroidRadiusY > 0) {
-	// 	Point center(combined_mask.cols / 2, combined_mask.rows / 2);
-	// 	if (results.valid) {
-	// 		center = (results.ellipse.size.width > 0) ? Point(results.ellipse.center) : Point(results.centroid);
-	// 	}
-	// 	int radius = std::min(greenCentroidRadiusX, greenCentroidRadiusY);
-
-	// 	// Mat circleMask = Mat::zeros(combined_mask.size(), CV_8U);
-	// 	// circle(circleMask, center, radius, Scalar(255), FILLED);
-	// 	// bitwise_and(combined_mask, circleMask, combined_mask);
-
-	// 	combined_mask = Mat::zeros(combined_mask.size(), CV_8U);
-	// 	circle(combined_mask, center, radius, Scalar(255), FILLED);
-	// } else {
-	// 	int w = combined_mask.cols; int h = combined_mask.rows;
-	// 	int marginX = std::max(1, (int)std::round(w * 0.05));
-	// 	int marginY = std::max(1, (int)std::round(h * 0.05));
-	// 	Mat borderMask = Mat::zeros(combined_mask.size(), CV_8U);
-	// 	Rect innerRect(marginX, marginY, std::max(0, w - 2 * marginX), std::max(0, h - 2 * marginY));
-	// 	if (innerRect.width > 0 && innerRect.height > 0) borderMask(innerRect).setTo(255);
-	// 	bitwise_and(combined_mask, borderMask, combined_mask);
-	// }
-
-	// Apply mask to index image
-	if (!indexImg.empty() && indexImg.size() == combined_mask.size()) {
-		indexImg.setTo(0, combined_mask == 0);
+	// Apply final mask to vegetation index image
+	if (!indexImg.empty() && indexImg.size() == results.mask.size()) {
+		indexImg.setTo(0, results.mask == 0);
 	}
 
-	results.mask = combined_mask;
 	return results;
 }
 

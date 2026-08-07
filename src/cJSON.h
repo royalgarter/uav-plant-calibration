@@ -1,4 +1,8 @@
 /*
+  DEPRECATED: only used by the native C web server `src/calib-web.cc`, which
+  is no longer built or used. The web UI runs on NodeJS (`webui/server.js`).
+  Do not extend or rebuild this.
+
   Copyright (c) 2009-2017 Dave Gamble and cJSON contributors
 
   Permission is hereby granted, free of charge, to any person obtaining a copy

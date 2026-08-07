@@ -1,3 +1,6 @@
+// DEPRECATED: only used by the native C web server `src/calib-web.cc`, which
+// is no longer built or used. The web UI runs on NodeJS (`webui/server.js`).
+// Do not extend or rebuild this.
 // Copyright (c) 2004-2013 Sergey Lyubka
 // Copyright (c) 2013-2025 Cesanta Software Limited
 // All rights reserved
