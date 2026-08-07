@@ -105,9 +105,22 @@ function executeCalibration(config, res) {
 		radioRefFile = '',
 		radioTemplatePath = '',
 		greenCentroidRadius = '',
+		preprocess = {},
 		optimize = false,
 		calc = {}
 	} = config;
+
+	// Preprocessing defaults mirror C++ GreenMaskParams defaults
+	const pre = {
+		textureThresh: 32.0,
+		ndviThresh: 0.12,
+		minAreaRatio: 0.0015,
+		solidityThresh: 0.50,
+		medianBlur: 5,
+		openKernel: 7,
+		closeKernel: 5,
+		...preprocess
+	};
 
 	// Build arguments list for ./calib
 	// Positional arguments first: inDir, outDir
@@ -138,6 +151,14 @@ function executeCalibration(config, res) {
 	if (greenCentroidRadius) {
 		args.push('--green-centroid-radius', greenCentroidRadius);
 	}
+
+	if (pre.textureThresh !== 32.0) args.push('--texture-thresh', String(pre.textureThresh));
+	if (pre.ndviThresh !== 0.12) args.push('--ndvi-thresh', String(pre.ndviThresh));
+	if (pre.minAreaRatio !== 0.0015) args.push('--min-area-ratio', String(pre.minAreaRatio));
+	if (pre.solidityThresh !== 0.50) args.push('--solidity-thresh', String(pre.solidityThresh));
+	if (pre.medianBlur !== 5) args.push('--median-blur', String(pre.medianBlur));
+	if (pre.openKernel !== 7) args.push('--open-kernel', String(pre.openKernel));
+	if (pre.closeKernel !== 5) args.push('--close-kernel', String(pre.closeKernel));
 
 	const indices = Object.keys(calc).filter(k => calc[k]).map(k => k.toLowerCase());
 	if (indices.length > 0) {

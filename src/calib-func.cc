@@ -1128,7 +1128,7 @@ static Mat computeLowNDVIMask(const map<int, Mat>& bands, Size targetSize, float
 	return Mat();
 }
 
-GreenMaskResults applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const string& outputDir, const string& prefix, const string& indexName, const map<int, Mat>& bands, int greenCentroidRadiusX, int greenCentroidRadiusY) {
+GreenMaskResults applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const string& outputDir, const string& prefix, const string& indexName, const map<int, Mat>& bands, const GreenMaskParams& params) {
 	GreenMaskResults results;
 	if (rgbImg.empty()) return results;
 
@@ -1136,8 +1136,8 @@ GreenMaskResults applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const 
 	// STEP 1: Background Subtraction & Low-NDVI & Texture Masks
 	// ------------------------------------------------------------------------
 	Mat nonConcreteMask = computeNonConcreteMask(rgbImg);
-	Mat smoothTextureMask = computeSmoothTextureMask(rgbImg, 32.0);
-	Mat ndviMask = computeLowNDVIMask(bands, rgbImg.size(), 0.12f);
+	Mat smoothTextureMask = computeSmoothTextureMask(rgbImg, params.textureThresh);
+	Mat ndviMask = computeLowNDVIMask(bands, rgbImg.size(), (float)params.ndviThresh);
 
 	Mat candidateMask;
 	if (!ndviMask.empty()) {
@@ -1164,10 +1164,10 @@ GreenMaskResults applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const 
 	// ------------------------------------------------------------------------
 	// STEP 1b: ROI Mask From Green Centroid Radius (drop border noise/out-of-focus)
 	// ------------------------------------------------------------------------
-	if (greenCentroidRadiusX > 0 && greenCentroidRadiusY > 0) {
+	if (params.centroidRadiusX > 0 && params.centroidRadiusY > 0) {
 		Mat roiMask = Mat::zeros(candidateMask.size(), CV_8U);
 		ellipse(roiMask, Point(candidateMask.cols / 2, candidateMask.rows / 2),
-		        Size(greenCentroidRadiusX, greenCentroidRadiusY), 0, 0, 360, Scalar(255), FILLED);
+		        Size(params.centroidRadiusX, params.centroidRadiusY), 0, 0, 360, Scalar(255), FILLED);
 		bitwise_and(candidateMask, roiMask, candidateMask);
 	}
 
@@ -1175,14 +1175,14 @@ GreenMaskResults applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const 
 	// STEP 2: Stronger Morphological Opening (Erosion before Dilation)
 	// ------------------------------------------------------------------------
 	// Median blur to remove point noise
-	medianBlur(candidateMask, candidateMask, 5);
+	medianBlur(candidateMask, candidateMask, params.medianBlurSize);
 
 	// OPENING (Erosion -> Dilation) with 7x7 kernel: Destroys fine moss bridges
-	Mat kernelOpen = getStructuringElement(MORPH_ELLIPSE, Size(7, 7));
+	Mat kernelOpen = getStructuringElement(MORPH_ELLIPSE, Size(params.openKernelSize, params.openKernelSize));
 	morphologyEx(candidateMask, candidateMask, MORPH_OPEN, kernelOpen);
 
 	// CLOSING with 5x5 kernel: Fills small internal leaf gaps
-	Mat kernelClose = getStructuringElement(MORPH_ELLIPSE, Size(5, 5));
+	Mat kernelClose = getStructuringElement(MORPH_ELLIPSE, Size(params.closeKernelSize, params.closeKernelSize));
 	morphologyEx(candidateMask, candidateMask, MORPH_CLOSE, kernelClose);
 
 	// ------------------------------------------------------------------------
@@ -1192,7 +1192,7 @@ GreenMaskResults applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const 
 	findContours(candidateMask, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
 
 	// Dynamic Minimum Area Threshold (0.15% of total image pixels)
-	double minAreaThreshold = rgbImg.cols * rgbImg.rows * 0.0015;
+	double minAreaThreshold = rgbImg.cols * rgbImg.rows * params.minAreaRatio;
 
 	struct ContourData {
 		int index;
@@ -1219,7 +1219,7 @@ GreenMaskResults applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const 
 			double solidity = (hullArea > 0) ? (area / hullArea) : 0.0;
 
 			// Solidity filter: Moss/scattered noise < 0.50, Foliage/Canopy >= 0.50
-			if (solidity >= 0.50) {
+			if (solidity >= params.solidityThresh) {
 				Moments mu = moments(contours[i]);
 				Point2f centroid(mu.m10 / (mu.m00 + 1e-6), mu.m01 / (mu.m00 + 1e-6));
 

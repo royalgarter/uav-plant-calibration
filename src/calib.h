@@ -146,6 +146,19 @@ RadioCoeffs getRadiometricCoeffs(const cv::Mat& img, const std::string& filename
 cv::Mat applyRadiometricCalibration(const cv::Mat& img, RadioCoeffs coeffs);
 void exportRadiometricCsv(const std::string& outPath, const std::map<std::string, GroupData>& allGroups);
 
+// Preprocessing (green mask noise filtering) parameters
+struct GreenMaskParams {
+	int centroidRadiusX = 0;        // ROI ellipse radius X (px); 0=disabled
+	int centroidRadiusY = 0;        // ROI ellipse radius Y (px); 0=disabled
+	double textureThresh = 32.0;    // smooth-texture max gradient threshold
+	double ndviThresh = 0.12;       // low-NDVI baseline threshold
+	double minAreaRatio = 0.0015;   // min contour area as fraction of image pixels
+	double solidityThresh = 0.50;   // min contour solidity to keep
+	int medianBlurSize = 5;         // median blur kernel size
+	int openKernelSize = 7;         // morphological opening kernel size
+	int closeKernelSize = 5;        // morphological closing kernel size
+};
+
 // Vegetation Indices
 struct GreenMaskResults {
 	cv::Mat mask;
@@ -157,7 +170,7 @@ struct GreenMaskResults {
 };
 
 cv::Mat calculateVegIndex(const std::string& type, const std::map<int, cv::Mat>& bands, const cv::Mat& mask = cv::Mat());
-GreenMaskResults applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const std::string& outputDir, const std::string& prefix, const std::string& indexName, const std::map<int, cv::Mat>& bands, int greenCentroidRadiusX = 0, int greenCentroidRadiusY = 0);
+GreenMaskResults applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const std::string& outputDir, const std::string& prefix, const std::string& indexName, const std::map<int, cv::Mat>& bands, const GreenMaskParams& params = GreenMaskParams());
 void exportVegIndexCsv(const std::string& outPath, const std::vector<std::string>& requestedIndices, const std::map<std::string, std::map<std::string, double>>& averages);
 
 #endif // CALIB_H

@@ -5,7 +5,8 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>UAV Plant Calibration</title>
 	<link rel="stylesheet" type="text/css" href="/litewind.css" />
-	<link rel="icon" type="image/png" href="/favicon.png">
+	<!-- <link rel="icon" type="image/png" href="/favicon.png"> -->
+	<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌳</text></svg>">
 	<script defer src="/alpine.min.js"></script>
 	<style>
 		[x-cloak] { display: none !important; }
@@ -15,6 +16,58 @@
 		}
 		.translate-x-0 {
 			translate: unset;
+		}
+		.help-tip {
+			position: relative;
+			display: inline-flex;
+			width: 15px;
+			height: 15px;
+			align-items: center;
+			justify-content: center;
+			margin-left: 4px;
+			border-radius: 9999px;
+			background: #e5e7eb;
+			color: #4b5563;
+			font-size: 10px;
+			font-weight: 700;
+			cursor: help;
+			flex-shrink: 0;
+		}
+		.help-tip:hover {
+			background: #3b82f6;
+			color: #fff;
+		}
+		.help-tip .help-text {
+			display: none;
+			position: absolute;
+			top: -6px;
+			left: 20px;
+			z-index: 50;
+			width: 240px;
+			padding: 8px 10px;
+			border-radius: 6px;
+			background: #1f2937;
+			color: #e5e7eb;
+			font-size: 11px;
+			font-weight: 400;
+			line-height: 1.4;
+			box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+		}
+		.help-tip .help-text .help-title {
+			display: block;
+			margin-bottom: 3px;
+			color: #93c5fd;
+			font-weight: 700;
+		}
+		.help-tip .help-text .help-hint {
+			display: block;
+			margin-top: 4px;
+			color: #9ca3af;
+			font-style: italic;
+		}
+		.help-tip:hover .help-text {
+			display: block;
+			left: 20px;
 		}
 	</style>
 </head>
@@ -110,12 +163,63 @@
 						</div>
 
 						<hr class="my-6">
-						<label class="block font-medium text-gray-700 w-36 my-2">Vegetation Indices:</label>
-						<div class="flex items-center" x-show="config.autoRadio && config.doRadio">
-							<label class="block text-gray-700 w-36 text-xs">Green centroid radius</label>
-							<input type="text" x-model="config.greenCentroidRadius" class="mt-1 block p-2 border text-xs w-20 lg:w-24 xl:w-48 2xl:w-96">
-							<p class="ml-2 mt-1 text-xs text-gray-500">(px)</br>0=disabled</p>
+						<div class="flex items-center cursor-pointer" @click="showPreprocess = !showPreprocess">
+							<label class="block font-medium text-gray-700 w-48 my-2">Preprocessing Parameters:</label>
+							<svg class="w-4 h-4 ml-1 text-gray-500 transition-transform" :class="showPreprocess ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
 						</div>
+						<div class="space-y-2 text-xs" x-show="showPreprocess">
+							<div class="flex items-center">
+								<label class="block text-gray-700 w-36 text-xs">Green centroid radius
+									<span class="help-tip">?<span class="help-text"><span class="help-title">Green Centroid Radius (px)</span>Crops the analysis to an ellipse centered on the image, removing border/edge noise and out-of-focus plants outside the focused plant.<span class="help-hint">Hint: 0 = disabled (full image). Set ~150-400 px for a centered plant.</span></span></span>
+								</label>
+								<input type="text" x-model="config.greenCentroidRadius" class="block p-2 border text-xs w-20">
+								<!-- <p class="ml-2 text-xs text-gray-500">(px)</br>0=disabled</p> -->
+							</div>
+							<div class="flex items-center">
+								<label class="block text-gray-700 w-36 text-xs">Texture threshold
+									<span class="help-tip">?<span class="help-text"><span class="help-title">Texture Threshold</span><span>Max local gradient density (Laplacian variance) a pixel may have to be kept. Discards highly-textured moss/gravel noise while keeping smooth leaf surfaces.</span><span class="help-hint">Hint: lower (e.g. 20) removes more moss; higher keeps more detail. Default 32.0.</span></span></span>
+								</label>
+								<input type="number" step="any" x-model="config.preprocess.textureThresh" class="block p-2 border text-xs w-20">
+							</div>
+							<div class="flex items-center">
+								<label class="block text-gray-700 w-36 text-xs">NDVI threshold
+									<span class="help-tip">?<span class="help-text"><span class="help-title">Low-NDVI Baseline</span><br>Minimum NDVI a pixel must exceed to count as vegetation. Keeps yellow/stressed leaves while stripping concrete background.<span class="help-hint">Hint: default 0.12. Raise to 0.2-0.3 for healthier-only foliage.</span></span></span>
+								</label>
+								<input type="number" step="any" x-model="config.preprocess.ndviThresh" class="block p-2 border text-xs w-20">
+							</div>
+							<div class="flex items-center">
+								<label class="block text-gray-700 w-36 text-xs">Min area ratio
+									<span class="help-tip">?<span class="help-text"><span class="help-title">Minimum Contour Area</span><br>Smallest plant object kept, as a fraction of total image pixels. Blobs smaller than this are treated as noise.<span class="help-hint">Hint: default 0.0015 (0.15%). Raise for larger plants only.</span></span></span>
+								</label>
+								<input type="number" step="any" x-model="config.preprocess.minAreaRatio" class="block p-2 border text-xs w-20">
+							</div>
+							<div class="flex items-center">
+								<label class="block text-gray-700 w-36 text-xs">Solidity threshold
+									<span class="help-tip">?<span class="help-text"><span class="help-title">Minimum Solidity</span><br>Solidity = contour area / convex-hull area. Rejects scattered moss/speckle (low solidity) while keeping dense canopy/blobs.<span class="help-hint">Hint: default 0.50. Higher = stricter (bloblier) shapes.</span></span></span>
+								</label>
+								<input type="number" step="any" x-model="config.preprocess.solidityThresh" class="block p-2 border text-xs w-20">
+							</div>
+							<div class="flex items-center">
+								<label class="block text-gray-700 w-36 text-xs">Median blur size
+									<span class="help-tip">?<span class="help-text"><span class="help-title">Median Blur Kernel</span><br>Kernel size used to remove point noise before morphological filtering. Must be odd.<span class="help-hint">Hint: default 5. Larger = smoother/noisier image. Use 1 = off.</span></span></span>
+								</label>
+								<input type="number" step="2" min="1" x-model="config.preprocess.medianBlur" class="block p-2 border text-xs w-20">
+							</div>
+							<div class="flex items-center">
+								<label class="block text-gray-700 w-36 text-xs">Open kernel size
+									<span class="help-tip">?<span class="help-text"><span class="help-title">Opening Kernel (erode→dilate)</span><br>Destroys fine moss bridges and thin connections between leaf blobs.<span class="help-hint">Hint: default 7. Raise to break up more bridges.</span></span></span>
+								</label>
+								<input type="number" step="2" min="1" x-model="config.preprocess.openKernel" class="block p-2 border text-xs w-20">
+							</div>
+							<div class="flex items-center">
+								<label class="block text-gray-700 w-36 text-xs">Close kernel size
+									<span class="help-tip">?<span class="help-text"><span class="help-title">Closing Kernel (dilate→erode)</span><br>Fills small internal gaps/holes inside a leaf blob so it reads as one solid plant.<span class="help-hint">Hint: default 5. Larger fills bigger holes.</span></span></span>
+								</label>
+								<input type="number" step="2" min="1" x-model="config.preprocess.closeKernel" class="block p-2 border text-xs w-20">
+							</div>
+						</div>
+						<hr class="my-6">
+						<label class="block font-medium text-gray-700 w-36 my-2">Vegetation Indices:</label>
 						<div class="space-x-2 space-y-2 text-sm block">
 							<template x-for="vegIdx in Object.keys(config.calc)" :key="vegIdx">
 								<div class="inline-block h-6 w-11 flex-shrink-0">
@@ -366,6 +470,15 @@
 					autoRadio: true,
 					autoRadioThickness: 10,
 					greenCentroidRadius: '150',
+					preprocess: {
+						textureThresh: 32.0,
+						ndviThresh: 0.12,
+						minAreaRatio: 0.0015,
+						solidityThresh: 0.50,
+						medianBlur: 5,
+						openKernel: 7,
+						closeKernel: 5,
+					},
 					optimize: true,
 					calc: {
 						NDVI: true,
@@ -413,6 +526,7 @@
 				selectedReport: '',
 				reportData: [],
 				showConfig: true,
+				showPreprocess: false,
 
 				// Line Profile state
 				linePoints: [],
@@ -476,6 +590,15 @@
 					if (this.config.optimize) cmd += ' --optimize';
 
 					if (this.config.greenCentroidRadius) cmd += ` --green-centroid-radius ${this.config.greenCentroidRadius}`;
+					const pre = this.config.preprocess || {};
+					const preDef = { textureThresh: 32.0, ndviThresh: 0.12, minAreaRatio: 0.0015, solidityThresh: 0.50, medianBlur: 5, openKernel: 7, closeKernel: 5 };
+					if (pre.textureThresh != preDef.textureThresh) cmd += ` --texture-thresh ${pre.textureThresh}`;
+					if (pre.ndviThresh != preDef.ndviThresh) cmd += ` --ndvi-thresh ${pre.ndviThresh}`;
+					if (pre.minAreaRatio != preDef.minAreaRatio) cmd += ` --min-area-ratio ${pre.minAreaRatio}`;
+					if (pre.solidityThresh != preDef.solidityThresh) cmd += ` --solidity-thresh ${pre.solidityThresh}`;
+					if (pre.medianBlur != preDef.medianBlur) cmd += ` --median-blur ${pre.medianBlur}`;
+					if (pre.openKernel != preDef.openKernel) cmd += ` --open-kernel ${pre.openKernel}`;
+					if (pre.closeKernel != preDef.closeKernel) cmd += ` --close-kernel ${pre.closeKernel}`;
 					const indices = Object.keys(this.config.calc).filter(k => this.config.calc[k]).map(k => k.toLowerCase());
 					if (indices.length > 0) {
 						cmd += ` --veg-idx ${indices.join(',')}`;

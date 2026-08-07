@@ -66,9 +66,8 @@ int main(int argc, char** argv) {
 	int autoRadioThickness = -1;
 	Point radioInterval(40, 0);
 	vector<string> requestedVegIndices = {"ndvi"};
-	// Focus radius (pixels) for green centroid masking. 0==disabled
-	int greenCentroidRadiusX = 0;
-	int greenCentroidRadiusY = 0;
+	// Preprocessing (green mask noise filtering) parameters
+	GreenMaskParams greenParams;
 
 	// Check for GUI flag first
 	gLog << "argv[1]: " << argv[1] << endl;
@@ -206,21 +205,35 @@ int main(int argc, char** argv) {
 						string sx = val.substr(0, commaPos);
 						string sy = val.substr(commaPos + 1);
 						try {
-							greenCentroidRadiusX = stoi(sx);
-							greenCentroidRadiusY = stoi(sy);
+							greenParams.centroidRadiusX = stoi(sx);
+							greenParams.centroidRadiusY = stoi(sy);
 						} catch (...) {
 							// ignore parse error, keep defaults
 						}
 					} else {
 						try {
 							int r = stoi(val);
-							greenCentroidRadiusX = greenCentroidRadiusY = r;
+							greenParams.centroidRadiusX = greenParams.centroidRadiusY = r;
 						} catch (...) {
 							// ignore
 						}
 					}
 					i++;
 				}
+			} else if (arg == "--texture-thresh") {
+				if (i + 1 < argc && argv[i+1][0] != '-') { greenParams.textureThresh = atof(argv[i+1]); i++; }
+			} else if (arg == "--ndvi-thresh") {
+				if (i + 1 < argc && argv[i+1][0] != '-') { greenParams.ndviThresh = atof(argv[i+1]); i++; }
+			} else if (arg == "--min-area-ratio") {
+				if (i + 1 < argc && argv[i+1][0] != '-') { greenParams.minAreaRatio = atof(argv[i+1]); i++; }
+			} else if (arg == "--solidity-thresh") {
+				if (i + 1 < argc && argv[i+1][0] != '-') { greenParams.solidityThresh = atof(argv[i+1]); i++; }
+			} else if (arg == "--median-blur") {
+				if (i + 1 < argc && argv[i+1][0] != '-') { greenParams.medianBlurSize = atoi(argv[i+1]); i++; }
+			} else if (arg == "--open-kernel") {
+				if (i + 1 < argc && argv[i+1][0] != '-') { greenParams.openKernelSize = atoi(argv[i+1]); i++; }
+			} else if (arg == "--close-kernel") {
+				if (i + 1 < argc && argv[i+1][0] != '-') { greenParams.closeKernelSize = atoi(argv[i+1]); i++; }
 			} else {
 				args.push_back(arg);
 			}
@@ -596,7 +609,7 @@ int main(int argc, char** argv) {
 		bool hasCommonMask = false;
 		if (alignedBands.count(0)) {
 			Mat dummy;
-			commonRes = applyGreenMask(dummy, alignedBands[0], vegidxDir, prefix, "common", alignedBands, greenCentroidRadiusX, greenCentroidRadiusY);
+			commonRes = applyGreenMask(dummy, alignedBands[0], vegidxDir, prefix, "common", alignedBands, greenParams);
 			commonMask = commonRes.mask;
 			hasCommonMask = true;
 		}
