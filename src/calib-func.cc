@@ -1074,6 +1074,86 @@ static Mat computeNonConcreteMask(const Mat& rgbImg) {
 }
 
 // ============================================================================
+// GENTLE HELPER 1: Soft Background Rejection (Preserves Yellow/Brown Leaves)
+// ============================================================================
+Mat computeSoftNonConcreteMask(const Mat& rgbImg) {
+	Mat hsv;
+	cvtColor(rgbImg, hsv, COLOR_BGR2HSV);
+
+	vector<Mat> hsvChannels;
+	split(hsv, hsvChannels);
+	Mat saturation = hsvChannels[1]; // S channel (0-255)
+
+	// Max channel difference: max(R,G,B) - min(R,G,B)
+	vector<Mat> bgr;
+	split(rgbImg, bgr);
+	Mat maxBGR, minBGR, chroma;
+	max(bgr[0], max(bgr[1], bgr[2]), maxBGR);
+	min(bgr[0], min(bgr[1], bgr[2]), minBGR);
+	chroma = maxBGR - minBGR;
+
+	// A pixel is NOT concrete if it has ANY color variation (chroma > 8)
+	// OR minimal saturation (S > 12). Retains pale yellow / brown leaves.
+	Mat nonConcreteMask;
+	Mat lowChromaMask = chroma > 8;
+	Mat lowSatMask = saturation > 12;
+	bitwise_or(lowChromaMask, lowSatMask, nonConcreteMask);
+	return nonConcreteMask;
+}
+
+// ============================================================================
+// GENTLE FIX 2: Central Anchor Enclosure (Preserves Sparse & Small Distant Leaves)
+// ============================================================================
+Mat applyCentralAnchorEnclosure(const Mat& candidateMask, double maxRadiusRatio) {
+	vector<Point> points;
+	findNonZero(candidateMask, points);
+
+	if (points.empty()) return candidateMask.clone();
+
+	// Median of candidate pixel coordinates: robust against outer moss outliers
+	vector<int> xCoords, yCoords;
+	xCoords.reserve(points.size());
+	yCoords.reserve(points.size());
+	for (const auto& p : points) {
+		xCoords.push_back(p.x);
+		yCoords.push_back(p.y);
+	}
+
+	size_t n = xCoords.size() / 2;
+	nth_element(xCoords.begin(), xCoords.begin() + n, xCoords.end());
+	nth_element(yCoords.begin(), yCoords.begin() + n, yCoords.end());
+
+	Point2f centralAnchor((float)xCoords[n], (float)yCoords[n]);
+
+	// Maximum allowed radius from the central plant anchor
+	double maxRadiusPx = candidateMask.cols * maxRadiusRatio;
+
+	// Keep ANY contour whose centroid lies within the Central Anchor Enclosure
+	vector<vector<Point>> contours;
+	findContours(candidateMask, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+
+	Mat outputMask = Mat::zeros(candidateMask.size(), CV_8U);
+	for (size_t i = 0; i < contours.size(); ++i) {
+		double area = contourArea(contours[i]);
+
+		// Lower minimum area limit to retain small unhealthy leaves
+		if (area >= 5.0) {
+			Moments mu = moments(contours[i]);
+			Point2f contourCentroid(mu.m10 / (mu.m00 + 1e-6), mu.m01 / (mu.m00 + 1e-6));
+
+			double distToAnchor = cv::norm(contourCentroid - centralAnchor);
+
+			// If the leaf is within the plant's spatial growth zone, KEEP IT
+			if (distToAnchor <= maxRadiusPx) {
+				drawContours(outputMask, contours, (int)i, Scalar(255), FILLED);
+			}
+		}
+	}
+
+	return outputMask;
+}
+
+// ============================================================================
 // HELPER 2: Texture / High-Frequency Variance Filtering
 // ============================================================================
 static Mat computeSmoothTextureMask(const Mat& rgbImg, double maxTextureThresh = 32.0) {
@@ -1128,9 +1208,187 @@ static Mat computeLowNDVIMask(const map<int, Mat>& bands, Size targetSize, float
 	return Mat();
 }
 
+Mat refineMaskWithKMeans(const Mat& candidateMask, const Mat& rgbImg, const Mat& ndviImg) {
+	const double eps = 1e-6;
+	vector<Point> candPoints;
+	findNonZero(candidateMask, candPoints);
+
+	// Too few pixels to cluster meaningfully
+	if ((int)candPoints.size() < 100) return candidateMask.clone();
+
+	Mat hsv;
+	cvtColor(rgbImg, hsv, COLOR_BGR2HSV);
+
+	// Feature matrix: N rows x 3 cols [Normalized_Hue, Saturation, NDVI]
+	Mat samples((int)candPoints.size(), 3, CV_32F);
+	for (size_t i = 0; i < candPoints.size(); ++i) {
+		const Point& pt = candPoints[i];
+		Vec3b hsvPixel = hsv.at<Vec3b>(pt);
+		double ndviVal = 0.0;
+		if (!ndviImg.empty() && ndviImg.type() == CV_32F) ndviVal = ndviImg.at<float>(pt);
+
+		samples.at<float>((int)i, 0) = hsvPixel[0] / 180.0f;          // Hue
+		samples.at<float>((int)i, 1) = hsvPixel[1] / 255.0f;          // Saturation
+		samples.at<float>((int)i, 2) = (float)std::max(0.0, ndviVal); // NDVI
+	}
+
+	// K-Means with K = 2
+	const int K = 2;
+	Mat labels, centers;
+	TermCriteria criteria(TermCriteria::EPS + TermCriteria::COUNT, 10, 1.0);
+	kmeans(samples, K, labels, criteria, 3, KMEANS_PP_CENTERS, centers);
+
+	// Plant cluster = higher combined (Saturation + NDVI) score
+	const float score0 = centers.at<float>(0, 1) + centers.at<float>(0, 2);
+	const float score1 = centers.at<float>(1, 1) + centers.at<float>(1, 2);
+	const int plantClusterIdx = (score1 > score0) ? 1 : 0;
+	const int mossClusterIdx = 1 - plantClusterIdx;
+
+	// Conservatively keep the whole mask unless the "moss" cluster is CLEARLY
+	// inferior. If the two clusters are close in (Saturation+NDVI) they are both
+	// legit canopy foliage and pruning would amputate healthy leaves.
+	const float scorePlant = std::max(score0, score1);
+	const float scoreMoss = std::min(score0, score1);
+	// Require a sizeable spectral gap so we never split one plant into two halves.
+	if (scoreMoss > 0.85f * scorePlant) {
+		return candidateMask.clone();
+	}
+
+	// Drop only the pixels belonging to the clearly-inferior spectral cluster.
+	Mat refinedMask = candidateMask.clone();
+	for (size_t i = 0; i < candPoints.size(); ++i) {
+		if (labels.at<int>((int)i) == mossClusterIdx) {
+			refinedMask.at<uchar>(candPoints[i].y, candPoints[i].x) = 0;
+		}
+	}
+	return refinedMask;
+}
+
+Mat filterSatelliteClusters(const Mat& inputMask, double maxMergeDistancePx) {
+	const double eps = 1e-6;
+	vector<vector<Point>> contours;
+	findContours(inputMask, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+
+	if (contours.size() <= 1) return inputMask.clone();
+
+	const int n = (int)contours.size();
+	vector<Point2f> centroids(n);
+	vector<double> areas(n);
+
+	for (int i = 0; i < n; ++i) {
+		areas[i] = contourArea(contours[i]);
+		Moments mu = moments(contours[i]);
+		centroids[i] = Point2f(mu.m10 / (mu.m00 + eps), mu.m01 / (mu.m00 + eps));
+	}
+
+	// Adjacency grouping: merge contours whose centroids are within maxMergeDistancePx
+	vector<int> clusterLabels(n, -1);
+	int currentCluster = 0;
+	vector<int> queue;
+	for (int i = 0; i < n; ++i) {
+		if (clusterLabels[i] != -1) continue;
+		clusterLabels[i] = currentCluster;
+		queue.clear();
+		queue.push_back(i);
+		while (!queue.empty()) {
+			int curr = queue.back();
+			queue.pop_back();
+			for (int j = 0; j < n; ++j) {
+				if (clusterLabels[j] == -1 && norm(centroids[curr] - centroids[j]) <= maxMergeDistancePx) {
+					clusterLabels[j] = currentCluster;
+					queue.push_back(j);
+				}
+			}
+		}
+		currentCluster++;
+	}
+
+	// Sum total area per cluster
+	vector<double> clusterAreas(currentCluster, 0.0);
+	for (int i = 0; i < n; ++i) clusterAreas[clusterLabels[i]] += areas[i];
+
+	const int bestClusterIdx = (int)(max_element(clusterAreas.begin(), clusterAreas.end()) - clusterAreas.begin());
+	const double primaryArea = clusterAreas[bestClusterIdx];
+
+	// Reconstruct mask. Keep the primary cluster plus every cluster that is NOT a
+	// tiny satellite (>= 5% of the primary's area). Only isolated specks get dropped,
+	// so fragmented real canopy is preserved while moss/algae satellites are removed.
+	Mat cleanMask = Mat::zeros(inputMask.size(), CV_8U);
+	for (int i = 0; i < n; ++i) {
+		if (clusterLabels[i] == bestClusterIdx || clusterAreas[clusterLabels[i]] >= 0.05 * primaryArea) {
+			drawContours(cleanMask, contours, i, Scalar(255), FILLED);
+		}
+	}
+	return cleanMask;
+}
+
 GreenMaskResults applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const string& outputDir, const string& prefix, const string& indexName, const map<int, Mat>& bands, const GreenMaskParams& params) {
 	GreenMaskResults results;
 	if (rgbImg.empty()) return results;
+
+	// ==========================================================================
+	// GENTLE MODE (Stressed-Plant Friendly): preserves yellow/brown/sparse leaves
+	// ==========================================================================
+	if (params.gentleMode) {
+		// 1. Soft background subtraction (keeps yellow/brown: any chroma or saturation)
+		Mat nonConcrete = computeSoftNonConcreteMask(rgbImg);
+
+		// 2. Relaxed texture & low-NDVI thresholds
+		Mat textMask = computeSmoothTextureMask(rgbImg, params.gentleTextThresh);
+		Mat ndviMask = computeLowNDVIMask(bands, rgbImg.size(), (float)params.gentleNdviThresh);
+
+		Mat candidateMask;
+		if (!ndviMask.empty()) {
+			bitwise_and(nonConcrete, ndviMask, candidateMask);
+		} else {
+			candidateMask = nonConcrete;
+		}
+		bitwise_and(candidateMask, textMask, candidateMask);
+
+		// 3. Light morphology (3x3) so tiny leaves are not eroded away
+		medianBlur(candidateMask, candidateMask, 3);
+		Mat kernelOpen = getStructuringElement(MORPH_ELLIPSE, Size(params.gentleOpenKernel, params.gentleOpenKernel));
+		morphologyEx(candidateMask, candidateMask, MORPH_OPEN, kernelOpen);
+
+		// 4. Central Anchor Enclosure (replaces aggressive K-Means/Spatial clustering)
+		Mat finalMask = applyCentralAnchorEnclosure(candidateMask, params.anchorRadiusRatio);
+
+		// 5. Aggregate final statistics
+		double totalValidArea = 0;
+		Point2f weightedCentroid(0, 0);
+		vector<Point> allPlantPoints;
+		vector<vector<Point>> contours;
+		findContours(finalMask, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+		for (const auto& c : contours) {
+			double a = contourArea(c);
+			if (a >= params.gentleMinArea) {
+				Moments mu = moments(c);
+				Point2f ctd(mu.m10 / (mu.m00 + 1e-6), mu.m01 / (mu.m00 + 1e-6));
+				totalValidArea += a;
+				weightedCentroid += ctd * (float)a;
+				for (const auto& p : c) allPlantPoints.push_back(p);
+			}
+		}
+
+		if (totalValidArea > 0) {
+			results.mask = finalMask;
+			results.totalArea = totalValidArea;
+			results.centroid = weightedCentroid / (float)(totalValidArea + 1e-6);
+			results.valid = true;
+			if (allPlantPoints.size() >= 5) {
+				convexHull(allPlantPoints, results.convexHull);
+				results.ellipse = fitEllipse(allPlantPoints);
+			}
+		} else {
+			results.mask = Mat::zeros(rgbImg.size(), CV_8U);
+			results.valid = false;
+		}
+
+		if (!indexImg.empty() && indexImg.size() == results.mask.size()) {
+			indexImg.setTo(0, results.mask == 0);
+		}
+		return results;
+	}
 
 	// ------------------------------------------------------------------------
 	// STEP 1: Background Subtraction & Low-NDVI & Texture Masks
@@ -1234,6 +1492,54 @@ GreenMaskResults applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const 
 				for (const auto& p : contours[i]) {
 					allPlantPoints.push_back(p);
 				}
+			}
+		}
+	}
+
+	// ------------------------------------------------------------------------
+	// STEP 3b: Clustering Refinement (K-Means then Spatial) on valid contours
+	// ------------------------------------------------------------------------
+	// Spectral K-Means first: splits spectrally-similar big moss blobs from the
+	// true canopy using [Hue, Saturation, NDVI]; then Spatial clustering drops any
+	// remaining satellite blobs physically detached from the primary cluster.
+	if ((params.spectralKMeans || params.spatialCluster) && totalValidArea > 0) {
+		// Build float NDVI image once, reuse for the spectral classifier
+		Mat ndviImg;
+		const float eps = 1e-6f;
+		if (bands.count(5) && (bands.count(3) || bands.count(2))) {
+			Mat NIR = bands.at(5).clone(), red = bands.count(3) ? bands.at(3).clone() : bands.at(2).clone();
+			if (NIR.channels() == 1 && red.channels() == 1) {
+				resize(NIR, NIR, filteredMask.size());
+				resize(red, red, filteredMask.size());
+				Mat NIRf, redf;
+				NIR.convertTo(NIRf, CV_32F); red.convertTo(redf, CV_32F);
+				ndviImg = (NIRf - redf) / (NIRf + redf + eps);
+			}
+		}
+
+		if (params.spectralKMeans) {
+			Mat refined = refineMaskWithKMeans(filteredMask, rgbImg, ndviImg);
+			if (!refined.empty()) filteredMask = refined;
+		}
+
+		if (params.spatialCluster) {
+			Mat cleaned = filterSatelliteClusters(filteredMask, (double)params.spatialMergeDist);
+			if (!cleaned.empty()) filteredMask = cleaned;
+		}
+
+		// Recompute aggregate stats on the refined mask
+		totalValidArea = 0;
+		weightedCentroid = Point2f(0, 0);
+		allPlantPoints.clear();
+		findContours(filteredMask, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+		for (const auto& c : contours) {
+			double a = contourArea(c);
+			if (a > 0) {
+				Moments mu = moments(c);
+				Point2f ctd(mu.m10 / (mu.m00 + 1e-6), mu.m01 / (mu.m00 + 1e-6));
+				totalValidArea += a;
+				weightedCentroid += ctd * (float)a;
+				for (const auto& p : c) allPlantPoints.push_back(p);
 			}
 		}
 	}

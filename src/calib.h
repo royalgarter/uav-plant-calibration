@@ -150,13 +150,29 @@ void exportRadiometricCsv(const std::string& outPath, const std::map<std::string
 struct GreenMaskParams {
 	int centroidRadiusX = 0;        // ROI ellipse radius X (px); 0=disabled
 	int centroidRadiusY = 0;        // ROI ellipse radius Y (px); 0=disabled
+	
 	double textureThresh = 32.0;    // smooth-texture max gradient threshold
 	double ndviThresh = 0.12;       // low-NDVI baseline threshold
 	double minAreaRatio = 0.0015;   // min contour area as fraction of image pixels
 	double solidityThresh = 0.50;   // min contour solidity to keep
+	
 	int medianBlurSize = 5;         // median blur kernel size
 	int openKernelSize = 7;         // morphological opening kernel size
 	int closeKernelSize = 5;        // morphological closing kernel size
+	
+	bool spectralKMeans = false;    // refine big blobs via [H,S,NDVI] K-Means (K=2)
+	bool spatialCluster = false;    // drop satellite moss blobs via spatial proximity grouping
+	int spatialMergeDist = 50;      // max centroid distance (px) to merge contours into one cluster
+
+	// Gentle (stressed-plant) mode: preserves yellow/brown/sparse/small leaves
+	bool gentleMode = false;        // use soft background rejection + central anchor enclosure
+	
+	double anchorRadiusRatio = 0.38; // central anchor radial enclosure as fraction of image width
+	double gentleTextThresh = 45.0;  // relaxed texture threshold (smoother = kept)
+	double gentleNdviThresh = 0.08;  // relaxed low-NDVI threshold (captures withered leaves)
+	
+	int gentleOpenKernel = 3;        // light morphological kernel so tiny leaves survive
+	int gentleMinArea = 5;           // min contour area (px) to retain small leaf tips
 };
 
 // Vegetation Indices
@@ -169,6 +185,10 @@ struct GreenMaskResults {
 	bool valid = false;
 };
 
+cv::Mat refineMaskWithKMeans(const cv::Mat& candidateMask, const cv::Mat& rgbImg, const cv::Mat& ndviImg);
+cv::Mat filterSatelliteClusters(const cv::Mat& inputMask, double maxMergeDistancePx = 50.0);
+cv::Mat computeSoftNonConcreteMask(const cv::Mat& rgbImg);
+cv::Mat applyCentralAnchorEnclosure(const cv::Mat& candidateMask, double maxRadiusRatio = 0.38);
 cv::Mat calculateVegIndex(const std::string& type, const std::map<int, cv::Mat>& bands, const cv::Mat& mask = cv::Mat());
 GreenMaskResults applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const std::string& outputDir, const std::string& prefix, const std::string& indexName, const std::map<int, cv::Mat>& bands, const GreenMaskParams& params = GreenMaskParams());
 void exportVegIndexCsv(const std::string& outPath, const std::vector<std::string>& requestedIndices, const std::map<std::string, std::map<std::string, double>>& averages);

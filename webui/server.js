@@ -60,7 +60,7 @@ const server = http.createServer((req, res) => {
 				name: file.name,
 				isDirectory: file.isDirectory(),
 				ext: path.extname(file.name).toLowerCase()
-			}));
+			})).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
 
 			res.writeHead(200, { 'Content-Type': 'application/json' });
 			res.end(JSON.stringify(list));

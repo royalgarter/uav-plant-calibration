@@ -35,6 +35,13 @@ void showUsage() {
 	cout << "                           cigreen, cire, ipvi, rdvi, wdrvi, wdvi, tsavi, atsavi, msr" << endl;
 	cout << "                Default: ndvi" << endl;
 	cout << "  --green-centroid-radius, -gcr  Radius px to focus green mask around image center; single value or \"w,h\" (default: 0 = disabled)" << endl;
+	cout << "  --kmeans      Refine big blobs via spectral K-Means (K=2) on [Hue, Saturation, NDVI]." << endl;
+	cout << "  --spatial     Drop satellite moss blobs via spatial proximity clustering." << endl;
+	cout << "  --cluster     Enable both --kmeans and --spatial (recommended combined approach)." << endl;
+	cout << "  --spatial-merge-dist  Max centroid distance (px) to merge contours (default: 50)." << endl;
+	cout << "  --gentle     Stressed-plant mode: soft background rejection + central anchor enclosure." << endl;
+	cout << "               Preserves yellow/brown/sparse/small leaves. Optional: --gentle-radius <frac>" << endl;
+	cout << "               (anchor radial enclosure as fraction of image width, default 0.38)." << endl;
 #ifdef WINGUI
 	cout << "  --gui         Launch Windows GUI interface." << endl;
 #endif
@@ -234,6 +241,19 @@ int main(int argc, char** argv) {
 				if (i + 1 < argc && argv[i+1][0] != '-') { greenParams.openKernelSize = atoi(argv[i+1]); i++; }
 			} else if (arg == "--close-kernel") {
 				if (i + 1 < argc && argv[i+1][0] != '-') { greenParams.closeKernelSize = atoi(argv[i+1]); i++; }
+			} else if (arg == "--kmeans") {
+				greenParams.spectralKMeans = true;
+			} else if (arg == "--spatial") {
+				greenParams.spatialCluster = true;
+			} else if (arg == "--cluster") {
+				greenParams.spectralKMeans = true;
+				greenParams.spatialCluster = true;
+			} else if (arg == "--spatial-merge-dist") {
+				if (i + 1 < argc && argv[i+1][0] != '-') { greenParams.spatialMergeDist = atoi(argv[i+1]); i++; }
+			} else if (arg == "--gentle") {
+				greenParams.gentleMode = true;
+			} else if (arg == "--gentle-radius") {
+				if (i + 1 < argc && argv[i+1][0] != '-') { greenParams.anchorRadiusRatio = atof(argv[i+1]); i++; }
 			} else {
 				args.push_back(arg);
 			}
