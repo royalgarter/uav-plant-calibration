@@ -34,7 +34,7 @@ void showUsage() {
 	cout << "                           evi, evi2, mcari, osavi, savi, msavi, dvi, nri, ndre, gndvi," << endl;
 	cout << "                           cigreen, cire, ipvi, rdvi, wdrvi, wdvi, tsavi, atsavi, msr" << endl;
 	cout << "                Default: ndvi" << endl;
-	cout << "  --green-centroid-radius, -gcr  Radius in pixels to focus green mask around image center (default: 0 = disabled)" << endl;
+	cout << "  --green-centroid-radius, -gcr  Radius px to focus green mask around image center; single value or \"w,h\" (default: 0 = disabled)" << endl;
 #ifdef WINGUI
 	cout << "  --gui         Launch Windows GUI interface." << endl;
 #endif

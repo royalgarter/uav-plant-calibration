@@ -169,52 +169,52 @@
 						<div class="space-y-2 text-xs" x-show="showPreprocess">
 							<div class="flex items-center">
 								<label class="block text-gray-700 w-36 text-xs">Green centroid radius
-									<span class="help-tip">?<span class="help-text"><span class="help-title">Green Centroid Radius (px)</span>Crops the analysis to an ellipse centered on the image, removing border/edge noise and out-of-focus plants outside the focused plant.<span class="help-hint">Hint: 0 = disabled (full image). Set ~150-400 px for a centered plant.</span></span></span>
+									<span class="help-tip">?<span class="help-text"><span class="help-title">Green Centroid Radius (px)</span>Crops the analysis to an ellipse centered on the image, removing border/edge noise and out-of-focus plants outside the focused plant.<span class="help-hint">Hint: Range [0, 4096] or "w,h" (e.g. 200,300). 0 = disabled (full image). Set ~150-400 px for a centered plant.</span></span></span>
 								</label>
 								<input type="text" x-model="config.greenCentroidRadius" class="block p-2 border text-xs w-20">
 								<!-- <p class="ml-2 text-xs text-gray-500">(px)</br>0=disabled</p> -->
 							</div>
 							<div class="flex items-center">
 								<label class="block text-gray-700 w-36 text-xs">Texture threshold
-									<span class="help-tip">?<span class="help-text"><span class="help-title">Texture Threshold</span><span>Max local gradient density (Laplacian variance) a pixel may have to be kept. Discards highly-textured moss/gravel noise while keeping smooth leaf surfaces.</span><span class="help-hint">Hint: lower (e.g. 20) removes more moss; higher keeps more detail. Default 32.0.</span></span></span>
+									<span class="help-tip">?<span class="help-text"><span class="help-title">Texture Threshold</span><span>Max local gradient density (Laplacian variance) a pixel may have to be kept. Discards highly-textured moss/gravel noise while keeping smooth leaf surfaces.</span><span class="help-hint">Hint: Range [0, 100]. Lower (e.g. 20) removes more moss; higher keeps more detail. Default 32.0.</span></span></span>
 								</label>
-								<input type="number" step="any" x-model="config.preprocess.textureThresh" class="block p-2 border text-xs w-20">
+								<input type="number" step="any" min="0" max="100" x-model="config.preprocess.textureThresh" class="block p-2 border text-xs w-20">
 							</div>
 							<div class="flex items-center">
 								<label class="block text-gray-700 w-36 text-xs">NDVI threshold
-									<span class="help-tip">?<span class="help-text"><span class="help-title">Low-NDVI Baseline</span><br>Minimum NDVI a pixel must exceed to count as vegetation. Keeps yellow/stressed leaves while stripping concrete background.<span class="help-hint">Hint: default 0.12. Raise to 0.2-0.3 for healthier-only foliage.</span></span></span>
+									<span class="help-tip">?<span class="help-text"><span class="help-title">Low-NDVI Baseline</span><br>Minimum NDVI a pixel must exceed to count as vegetation. Keeps yellow/stressed leaves while stripping concrete background. Range [-1, 1].<span class="help-hint">Hint: Range [-1, 1]. Default 0.12. Raise to 0.2-0.3 for healthier-only foliage.</span></span></span>
 								</label>
-								<input type="number" step="any" x-model="config.preprocess.ndviThresh" class="block p-2 border text-xs w-20">
+								<input type="number" step="any" min="-1" max="1" x-model="config.preprocess.ndviThresh" class="block p-2 border text-xs w-20">
 							</div>
 							<div class="flex items-center">
 								<label class="block text-gray-700 w-36 text-xs">Min area ratio
-									<span class="help-tip">?<span class="help-text"><span class="help-title">Minimum Contour Area</span><br>Smallest plant object kept, as a fraction of total image pixels. Blobs smaller than this are treated as noise.<span class="help-hint">Hint: default 0.0015 (0.15%). Raise for larger plants only.</span></span></span>
+									<span class="help-tip">?<span class="help-text"><span class="help-title">Minimum Contour Area</span><br>Smallest plant object kept, as a fraction of total image pixels. Blobs smaller than this are treated as noise.<span class="help-hint">Hint: Range [0, 1]. Default 0.0015 (0.15%). Raise for larger plants only.</span></span></span>
 								</label>
-								<input type="number" step="any" x-model="config.preprocess.minAreaRatio" class="block p-2 border text-xs w-20">
+								<input type="number" step="any" min="0" max="1" x-model="config.preprocess.minAreaRatio" class="block p-2 border text-xs w-20">
 							</div>
 							<div class="flex items-center">
 								<label class="block text-gray-700 w-36 text-xs">Solidity threshold
-									<span class="help-tip">?<span class="help-text"><span class="help-title">Minimum Solidity</span><br>Solidity = contour area / convex-hull area. Rejects scattered moss/speckle (low solidity) while keeping dense canopy/blobs.<span class="help-hint">Hint: default 0.50. Higher = stricter (bloblier) shapes.</span></span></span>
+									<span class="help-tip">?<span class="help-text"><span class="help-title">Minimum Solidity</span><br>Solidity = contour area / convex-hull area. Rejects scattered moss/speckle (low solidity) while keeping dense canopy/blobs.<span class="help-hint">Hint: Range [0, 1]. Default 0.50. Higher = stricter (bloblier) shapes.</span></span></span>
 								</label>
-								<input type="number" step="any" x-model="config.preprocess.solidityThresh" class="block p-2 border text-xs w-20">
+								<input type="number" step="any" min="0" max="1" x-model="config.preprocess.solidityThresh" class="block p-2 border text-xs w-20">
 							</div>
 							<div class="flex items-center">
 								<label class="block text-gray-700 w-36 text-xs">Median blur size
-									<span class="help-tip">?<span class="help-text"><span class="help-title">Median Blur Kernel</span><br>Kernel size used to remove point noise before morphological filtering. Must be odd.<span class="help-hint">Hint: default 5. Larger = smoother/noisier image. Use 1 = off.</span></span></span>
+									<span class="help-tip">?<span class="help-text"><span class="help-title">Median Blur Kernel</span><br>Kernel size used to remove point noise before morphological filtering. Must be odd.<span class="help-hint">Hint: Range [1, 51], odd only. Default 5. Larger = smoother/noisier image. Use 1 = off.</span></span></span>
 								</label>
-								<input type="number" step="2" min="1" x-model="config.preprocess.medianBlur" class="block p-2 border text-xs w-20">
+								<input type="number" step="2" min="1" max="51" x-model="config.preprocess.medianBlur" class="block p-2 border text-xs w-20">
 							</div>
 							<div class="flex items-center">
 								<label class="block text-gray-700 w-36 text-xs">Open kernel size
-									<span class="help-tip">?<span class="help-text"><span class="help-title">Opening Kernel (erode→dilate)</span><br>Destroys fine moss bridges and thin connections between leaf blobs.<span class="help-hint">Hint: default 7. Raise to break up more bridges.</span></span></span>
+									<span class="help-tip">?<span class="help-text"><span class="help-title">Opening Kernel (erode→dilate)</span><br>Destroys fine moss bridges and thin connections between leaf blobs.<span class="help-hint">Hint: Range [1, 51], odd. Default 7. Raise to break up more bridges.</span></span></span>
 								</label>
-								<input type="number" step="2" min="1" x-model="config.preprocess.openKernel" class="block p-2 border text-xs w-20">
+								<input type="number" step="2" min="1" max="51" x-model="config.preprocess.openKernel" class="block p-2 border text-xs w-20">
 							</div>
 							<div class="flex items-center">
 								<label class="block text-gray-700 w-36 text-xs">Close kernel size
-									<span class="help-tip">?<span class="help-text"><span class="help-title">Closing Kernel (dilate→erode)</span><br>Fills small internal gaps/holes inside a leaf blob so it reads as one solid plant.<span class="help-hint">Hint: default 5. Larger fills bigger holes.</span></span></span>
+									<span class="help-tip">?<span class="help-text"><span class="help-title">Closing Kernel (dilate→erode)</span><br>Fills small internal gaps/holes inside a leaf blob so it reads as one solid plant.<span class="help-hint">Hint: Range [1, 51], odd. Default 5. Larger fills bigger holes.</span></span></span>
 								</label>
-								<input type="number" step="2" min="1" x-model="config.preprocess.closeKernel" class="block p-2 border text-xs w-20">
+								<input type="number" step="2" min="1" max="51" x-model="config.preprocess.closeKernel" class="block p-2 border text-xs w-20">
 							</div>
 						</div>
 						<hr class="my-6">
@@ -609,7 +609,47 @@
 					this.config.autoRadio = !this.config.autoRadio;
 				},
 
+				validateCalibration() {
+					const pre = this.config.preprocess || {};
+					const checks = [
+						['Texture threshold', Number(pre.textureThresh), 0, 100],
+						['NDVI threshold', Number(pre.ndviThresh), -1, 1],
+						['Min area ratio', Number(pre.minAreaRatio), 0, 1],
+						['Solidity threshold', Number(pre.solidityThresh), 0, 1],
+					];
+					for (const [label, val, min, max] of checks) {
+						if (val === '' || isNaN(val) || val < min || val > max) {
+							return `${label} must be in range [${min}, ${max}]`;
+						}
+					}
+					const gcr = String(this.config.greenCentroidRadius || '').trim();
+					if (gcr) {
+						const parts = gcr.split(',').map(p => p.trim()).filter(Boolean);
+						if (parts.length > 2) {
+							return 'Green centroid radius must be a number or "w,h" (e.g. 200,300)';
+						}
+						for (const p of parts) {
+							const v = Number(p);
+							if (v === '' || isNaN(v) || v < 0 || v > 4096) {
+								return 'Green centroid radius must be in range [0, 4096] or "w,h" format (e.g. 200,300)';
+							}
+						}
+					}
+					for (const label of ['Median blur size', 'Open kernel size', 'Close kernel size']) {
+						const val = Number(pre[label === 'Median blur size' ? 'medianBlur' : label === 'Open kernel size' ? 'openKernel' : 'closeKernel']);
+						if (val === '' || isNaN(val) || val < 1 || val > 51 || val % 2 === 0) {
+							return `${label} must be an odd integer in range [1, 51]`;
+						}
+					}
+					return '';
+				},
+
 				async runCalibration() {
+					const validationError = this.validateCalibration();
+					if (validationError) {
+						this.logs = `Validation Error: ${validationError}\n`;
+						return;
+					}
 					this.running = true;
 					this.showConfig = false;
 					this.logs = "Starting calibration task...\n";
