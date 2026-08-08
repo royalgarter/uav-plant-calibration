@@ -148,6 +148,8 @@ void exportRadiometricCsv(const std::string& outPath, const std::map<std::string
 
 // Preprocessing (green mask noise filtering) parameters
 struct GreenMaskParams {
+	int centroidCenterX = -1;       // ROI ellipse center X (px); -1 = image center
+	int centroidCenterY = -1;       // ROI ellipse center Y (px); -1 = image center
 	int centroidRadiusX = 0;        // ROI ellipse radius X (px); 0=disabled
 	int centroidRadiusY = 0;        // ROI ellipse radius Y (px); 0=disabled
 	

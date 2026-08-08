@@ -169,10 +169,13 @@
 						<div class="space-y-2 text-xs" x-show="showPreprocess">
 							<div class="flex items-center">
 								<label class="block text-gray-700 w-36 text-xs">Green centroid radius
-									<span class="help-tip">?<span class="help-text"><span class="help-title">Green Centroid Radius (px)</span>Crops the analysis to an ellipse centered on the image, removing border/edge noise and out-of-focus plants outside the focused plant.<span class="help-hint">Hint: Range [0, 4096] or "w,h" (e.g. 200,300). 0 = disabled (full image). Set ~150-400 px for a centered plant.</span></span></span>
+									<span class="help-tip">?<span class="help-text"><span class="help-title">Green Centroid Radius (px)</span>Crops the analysis to an ellipse (center + radii), removing border/edge noise and out-of-focus plants outside the focused plant.<span class="help-hint">Hint: Format "centerX,centerY,radiusX,radiusY" (e.g. 2700,1800,200,300). "radiusX,radiusY" = center at image center. Single "r" = both radii. 0 = disabled. Use the "Pick ROI" button to draw the region visually.</span></span></span>
 								</label>
-								<input type="text" x-model="config.greenCentroidRadius" class="block p-2 border text-xs w-20">
-								<!-- <p class="ml-2 text-xs text-gray-500">(px)</br>0=disabled</p> -->
+								<input type="text" x-model="config.greenCentroidRadius" class="block p-2 border text-xs w-28">
+								<button @click="openRoiPicker()" type="button" class="cursor-pointer h-8 ml-1 px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs flex items-center" title="Draw ROI region on first input image">
+									<svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4h4v4H4zM4 16h4v4H4zM16 4h4v4h-4zM16 16h4v4h-4z"></path></svg>
+									Pick ROI
+								</button>
 							</div>
 							<div class="flex items-center">
 								<label class="block text-gray-700 w-36 text-xs">Texture threshold
@@ -455,6 +458,48 @@
 				</div>
 			</div>
 		</div>
+
+		<!-- ROI Picker Modal -->
+		<div id="roi-picker-modal" x-show="roiOpen" x-cloak class="fixed top-0 left-0 right-0 bottom-0 z-40 flex items-center justify-center p-4 bg-black/70 select-none"
+			@keydown.escape.window="roiOpen = false"
+			@keydown.enter.window="roiOpen && roiImage && applyRoi()">
+			<button @click="roiOpen = false" class="absolute top-4 right-4 text-white hover:text-gray-300 z-20">
+				<svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+			</button>
+			<div class="relative max-w-[95vw] max-h-[95vh] flex flex-col items-center bg-gray-900/70 rounded-lg p-3">
+				<p class="text-white font-semibold text-sm mb-1">Draw ROI on <span class="text-blue-400" x-text="roiImageName"></span></p>
+				<p class="text-gray-400 text-xs mb-2">Drag a rectangle over the region of interest, then click Apply or press Enter.</p>
+				<div class="relative inline-block shadow-2xl rounded overflow-hidden bg-black" style="min-width: 300px; min-height: 200px;"
+					@mousedown="roiMouseDown($event)"
+					@mousemove="roiMouseMove($event)"
+					@mouseup="roiMouseUp()"
+					@mouseleave="roiMouseUp()">
+					<img :src="roiImage" x-ref="roiImg" class="max-w-full max-h-[80vh] block select-none" draggable="false"
+						@load="roiMsg = 'Image loaded. Drag to select ROI.'" alt="ROI Image">
+
+					<template x-if="roiImage && roiRect.width > 0 && roiRect.height > 0">
+						<div class="absolute top-0 left-0 w-full h-full pointer-events-none"
+							:style="`left: ${roiRect.left*100}%; top: ${roiRect.top*100}%; width: ${roiRect.width*100}%; height: ${roiRect.height*100}%;`">
+							<div class="w-full h-full border-2 border-blue-400 bg-blue-500/20"></div>
+							<div class="absolute -top-5 left-0 text-xs text-white bg-blue-600 px-1 rounded"
+								x-text="`${Math.round(roiRect.left*100)}%,${Math.round(roiRect.top*100)}% -> ${Math.round(roiRect.right*100)}%,${Math.round(roiRect.bottom*100)}%`"></div>
+						</div>
+					</template>
+				</div>
+
+				<p class="text-xs text-gray-400 mt-2 text-center" x-show="roiMsg" x-text="roiMsg"></p>
+				<p class="text-xs text-green-400 mt-1 text-center font-mono" x-show="roiImage && roiPixels"
+					x-text="roiPixels"></p>
+				<p class="text-xs text-red-400 mt-2 text-center" x-show="roiError" x-text="roiError"></p>
+
+				<div class="flex gap-2 mt-2">
+					<button @click="applyRoi()" :disabled="!roiImage" type="button"
+						class="cursor-pointer px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white text-sm rounded">Apply ROI</button>
+					<button @click="roiOpen = false" type="button"
+						class="cursor-pointer px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white text-sm rounded">Cancel</button>
+				</div>
+			</div>
+		</div>
 	</div>
 
 	<script>
@@ -539,6 +584,19 @@
 				lineProfileDistance: 0,
 				hoverIdx: null,
 				overlayOpacity: 50,
+
+				// ROI picker state
+				roiOpen: false,
+				roiImage: '',
+				roiImageName: '',
+				roiDragging: false,
+				roiStart: { x: 0, y: 0 },
+				roiEnd: { x: 0, y: 0 },
+				roiMsg: '',
+				roiError: '',
+
+				// Config persistence
+				lastSavedConfigJson: '',
 
 				get anchorPath() {
 					if (!this.modalTitle) return '';
@@ -625,13 +683,13 @@
 					const gcr = String(this.config.greenCentroidRadius || '').trim();
 					if (gcr) {
 						const parts = gcr.split(',').map(p => p.trim()).filter(Boolean);
-						if (parts.length > 2) {
-							return 'Green centroid radius must be a number or "w,h" (e.g. 200,300)';
+						if (![1, 2, 4].includes(parts.length)) {
+							return 'Green centroid radius must be "centerX,centerY,radiusX,radiusY", "radiusX,radiusY", or a single radius (e.g. 2700,1800,200,300)';
 						}
 						for (const p of parts) {
 							const v = Number(p);
-							if (v === '' || isNaN(v) || v < 0 || v > 4096) {
-								return 'Green centroid radius must be in range [0, 4096] or "w,h" format (e.g. 200,300)';
+							if (v === '' || isNaN(v) || v < 0 || v > 100000) {
+								return 'Green centroid radius values must be non-negative numbers (center & radius in pixels)';
 							}
 						}
 					}
@@ -1076,14 +1134,147 @@
 					localStorage.setItem('profileModalPos', JSON.stringify(this.profileModalPos));
 				},
 
+				openRoiPicker() {
+					this.roiOpen = true;
+					this.roiMsg = '';
+					this.roiError = '';
+					this.roiImage = '';
+					this.roiImageName = '';
+					this.roiStart = { x: 0, y: 0 };
+					this.roiEnd = { x: 0, y: 0 };
+					fetch(`/firstimg?dir=${encodeURIComponent(this.config.inDir || '.input')}`)
+						.then(r => r.json())
+						.then(data => {
+							if (data.error) {
+								this.roiError = data.error;
+								return;
+							}
+							this.roiImage = data.url;
+							this.roiImageName = data.name;
+						})
+						.catch(e => { this.roiError = e.toString(); });
+				},
+
+				roiMouseDown(e) {
+					if (!this.roiImage) return;
+					const img = this.$refs.roiImg;
+					const rect = img.getBoundingClientRect();
+					const x = (e.clientX - rect.left) / rect.width;
+					const y = (e.clientY - rect.top) / rect.height;
+					this.roiDragging = true;
+					this.roiStart = { x, y };
+					this.roiEnd = { x, y };
+					this.roiError = '';
+				},
+
+				roiMouseMove(e) {
+					if (!this.roiDragging) return;
+					const img = this.$refs.roiImg;
+					const rect = img.getBoundingClientRect();
+					this.roiEnd = {
+						x: Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)),
+						y: Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height))
+					};
+				},
+
+				roiMouseUp() {
+					if (!this.roiDragging) return;
+					this.roiDragging = false;
+				},
+
+				get roiRect() {
+					const s = this.roiStart, e = this.roiEnd;
+					return {
+						left: Math.min(s.x, e.x),
+						top: Math.min(s.y, e.y),
+						right: Math.max(s.x, e.x),
+						bottom: Math.max(s.y, e.y),
+						width: Math.abs(e.x - s.x),
+						height: Math.abs(e.y - s.y)
+					};
+				},
+
+				get roiPixels() {
+					if (!this.$refs.roiImg || !this.$refs.roiImg.naturalWidth) return '';
+					const r = this.roiRect;
+					if (r.width < 0.01 || r.height < 0.01) return '';
+					const W = this.$refs.roiImg.naturalWidth, H = this.$refs.roiImg.naturalHeight;
+					const centerX = Math.round((r.left + r.right) / 2 * W);
+					const centerY = Math.round((r.top + r.bottom) / 2 * H);
+					const radiusX = Math.round(r.width * W / 2);
+					const radiusY = Math.round(r.height * H / 2);
+					return `centerX=${centerX}px, centerY=${centerY}px | radiusX=${radiusX}px, radiusY=${radiusY}px`;
+				},
+
+				applyRoi() {
+					const r = this.roiRect;
+					if (r.width < 0.01 || r.height < 0.01) {
+						this.roiError = 'Drag a rectangle to define the ROI region.';
+						return;
+					}
+					// Relative (0..1) -> actual pixels using natural image dimensions
+					const img = this.$refs.roiImg;
+					const W = img.naturalWidth, H = img.naturalHeight;
+					const centerX = Math.round((r.left + r.right) / 2 * W);
+					const centerY = Math.round((r.top + r.bottom) / 2 * H);
+					const radiusX = Math.round(r.width * W / 2);
+					const radiusY = Math.round(r.height * H / 2);
+					this.config.greenCentroidRadius = `${centerX},${centerY},${radiusX},${radiusY}`;
+					this.roiMsg = `ROI set. centerX=${centerX}, centerY=${centerY}, radiusX=${radiusX}, radiusY=${radiusY}`;
+					this.roiOpen = false;
+				},
+
 				init() {
+					// Restore last-used configuration from localStorage
+					this.loadSavedConfig();
 					// Defer fetches so the browser finishes page load first —
 					// requests started during load keep the tab spinner spinning.
 					setTimeout(() => {
 						this.fetchOutputFiles();
 						this.fetchReportFiles();
 					}, 100);
-				}
+					// Autosave config whenever it changes
+					setInterval(() => this.saveConfig(), 500);
+				},
+
+				loadSavedConfig() {
+					try {
+						const saved = localStorage.getItem('calibConfig');
+						if (saved) {
+							const parsed = JSON.parse(saved);
+							if (parsed && typeof parsed === 'object') {
+								this.config = this.mergeConfig(this.config, parsed);
+								this.lastSavedConfigJson = JSON.stringify(this.config);
+							}
+						}
+					} catch (e) {
+						console.error('Failed to load saved config:', e);
+					}
+				},
+
+				mergeConfig(defaults, saved) {
+					const out = { ...defaults };
+					for (const k in saved) {
+						if (saved[k] && typeof saved[k] === 'object' && !Array.isArray(saved[k]) && defaults[k] && typeof defaults[k] === 'object') {
+							out[k] = { ...defaults[k], ...saved[k] };
+						} else {
+							out[k] = saved[k];
+						}
+					}
+					return out;
+				},
+
+				saveConfig() {
+					const json = JSON.stringify(this.config);
+					if (json !== this.lastSavedConfigJson) {
+						this.lastSavedConfigJson = json;
+						try {
+							localStorage.setItem('calibConfig', json);
+						} catch (e) {
+							console.error('Failed to save config:', e);
+						}
+					}
+				},
 			}
 		}
 	</script>

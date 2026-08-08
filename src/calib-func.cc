@@ -1424,7 +1424,9 @@ GreenMaskResults applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const 
 	// ------------------------------------------------------------------------
 	if (params.centroidRadiusX > 0 && params.centroidRadiusY > 0) {
 		Mat roiMask = Mat::zeros(candidateMask.size(), CV_8U);
-		ellipse(roiMask, Point(candidateMask.cols / 2, candidateMask.rows / 2),
+		int cx = params.centroidCenterX >= 0 ? params.centroidCenterX : candidateMask.cols / 2;
+		int cy = params.centroidCenterY >= 0 ? params.centroidCenterY : candidateMask.rows / 2;
+		ellipse(roiMask, Point(cx, cy),
 		        Size(params.centroidRadiusX, params.centroidRadiusY), 0, 0, 360, Scalar(255), FILLED);
 		bitwise_and(candidateMask, roiMask, candidateMask);
 	}

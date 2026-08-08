@@ -207,23 +207,44 @@ int main(int argc, char** argv) {
 			} else if (arg == "--green-centroid-radius" || arg == "-gcr") {
 				if (i + 1 < argc && argv[i+1][0] != '-') {
 					string val = argv[i+1];
-					auto commaPos = val.find(',');
-					if (commaPos != string::npos) {
-						string sx = val.substr(0, commaPos);
-						string sy = val.substr(commaPos + 1);
-						try {
-							greenParams.centroidRadiusX = stoi(sx);
-							greenParams.centroidRadiusY = stoi(sy);
-						} catch (...) {
-							// ignore parse error, keep defaults
+					vector<string> parts;
+					stringstream ss(val);
+					string seg;
+					while (getline(ss, seg, ',')) {
+						parts.push_back(seg);
+					}
+					auto toInt = [](const string& s) -> int {
+						try { return stoi(s); } catch (...) { return -1; }
+					};
+					if (parts.size() >= 4) {
+						// centerX,centerY,radiusX,radiusY
+						int cx = toInt(parts[0]);
+						int cy = toInt(parts[1]);
+						int rx = toInt(parts[2]);
+						int ry = toInt(parts[3]);
+						if (cx >= 0 && cy >= 0) {
+							greenParams.centroidCenterX = cx;
+							greenParams.centroidCenterY = cy;
 						}
-					} else {
-						try {
-							int r = stoi(val);
-							greenParams.centroidRadiusX = greenParams.centroidRadiusY = r;
-						} catch (...) {
-							// ignore
+						if (rx > 0 || ry > 0) {
+							greenParams.centroidRadiusX = rx;
+							greenParams.centroidRadiusY = ry;
 						}
+					} else if (parts.size() == 2) {
+						// radiusX,radiusY ; center = image center
+						int rx = toInt(parts[0]);
+						int ry = toInt(parts[1]);
+						greenParams.centroidCenterX = -1;
+						greenParams.centroidCenterY = -1;
+						greenParams.centroidRadiusX = rx;
+						greenParams.centroidRadiusY = ry;
+					} else if (parts.size() == 1) {
+						// single radius ; center = image center
+						int r = toInt(parts[0]);
+						greenParams.centroidCenterX = -1;
+						greenParams.centroidCenterY = -1;
+						greenParams.centroidRadiusX = r;
+						greenParams.centroidRadiusY = r;
 					}
 					i++;
 				}
@@ -677,8 +698,14 @@ int main(int argc, char** argv) {
 					if (commonRes.ellipse.size.width > 0) {
 						ellipse(composite, commonRes.ellipse, Scalar(0, 0, 255), 2);
 					}
-					// Draw Centroid (Blue Cross)
-					int cs = 10;
+				// Draw Centroid ROI Ellipse (Blue) at ROI center (defaults to image center)
+				if (greenParams.centroidRadiusX > 0 && greenParams.centroidRadiusY > 0) {
+					int cx = greenParams.centroidCenterX >= 0 ? greenParams.centroidCenterX : composite.cols / 2;
+					int cy = greenParams.centroidCenterY >= 0 ? greenParams.centroidCenterY : composite.rows / 2;
+					ellipse(composite, Point(cx, cy), Size(greenParams.centroidRadiusX, greenParams.centroidRadiusY), 0, 0, 360, Scalar(255, 0, 0), 2);
+				}
+				// Draw Centroid (Blue Cross)
+				int cs = 10;
 					line(composite, Point(commonRes.centroid.x - cs, commonRes.centroid.y), Point(commonRes.centroid.x + cs, commonRes.centroid.y), Scalar(255, 0, 0), 2);
 					line(composite, Point(commonRes.centroid.x, commonRes.centroid.y - cs), Point(commonRes.centroid.x, commonRes.centroid.y + cs), Scalar(255, 0, 0), 2);
 				}

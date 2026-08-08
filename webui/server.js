@@ -68,6 +68,36 @@ const server = http.createServer((req, res) => {
 		return;
 	}
 
+	// Return the first displayable image from a directory (for ROI picker)
+	if (req.method === 'GET' && req.url.startsWith('/firstimg?dir=')) {
+		const urlParams = new URL(req.url, `http://${req.headers.host}`);
+		const dir = urlParams.searchParams.get('dir') || '.input';
+
+		const safePath = path.normalize(dir).replace(/^(\.\.[\/\\])+/, '');
+		const absolutePath = path.join(process.cwd(), safePath);
+
+		fs.readdir(absolutePath, (err, files) => {
+			if (err) {
+				res.writeHead(500, { 'Content-Type': 'application/json' });
+				res.end(JSON.stringify({ error: err.message }));
+				return;
+			}
+			const preferred = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'];
+			const images = files.filter(f => preferred.includes(path.extname(f).toLowerCase()));
+			// Fall back to any image-like extension (incl. TIFF) if no browser-displayable one exists
+			const tifs = files.filter(f => ['.tif', '.tiff'].includes(path.extname(f).toLowerCase()));
+			const chosen = images.length > 0 ? images[0] : (tifs.length > 0 ? tifs[0] : null);
+			if (!chosen) {
+				res.writeHead(404, { 'Content-Type': 'application/json' });
+				res.end(JSON.stringify({ error: 'No image found in ' + dir }));
+				return;
+			}
+			res.writeHead(200, { 'Content-Type': 'application/json' });
+			res.end(JSON.stringify({ name: chosen, url: '/' + safePath + '/' + encodeURIComponent(chosen) }));
+		});
+		return;
+	}
+
 	// Serve static files
 	let filePath = req.url === '/' ? '/index.html' : req.url;
 
