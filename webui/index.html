@@ -166,8 +166,8 @@
 							<label class="block font-medium text-gray-700 w-48 my-2">Preprocessing Parameters:</label>
 							<svg class="w-4 h-4 ml-1 text-gray-500 transition-transform" :class="showPreprocess ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
 						</div>
-						<div class="space-y-2 text-xs" x-show="showPreprocess">
-							<div class="flex items-center">
+						<div class="grid grid-cols-2 gap-2 text-xs" x-show="showPreprocess">
+							<div class="flex items-center col-span-2">
 								<label class="block text-gray-700 w-36 text-xs">Green centroid radius
 									<span class="help-tip">?<span class="help-text"><span class="help-title">Green Centroid Radius (px)</span>Crops the analysis to an ellipse (center + radii), removing border/edge noise and out-of-focus plants outside the focused plant.<span class="help-hint">Hint: Format "centerX,centerY,radiusX,radiusY" (e.g. 2700,1800,200,300). "radiusX,radiusY" = center at image center. Single "r" = both radii. 0 = disabled. Use the "Pick ROI" button to draw the region visually.</span></span></span>
 								</label>
@@ -563,7 +563,7 @@
 				loadingFiles: false,
 				viewDir: 'vegetation_index',
 				modalOpen: false,
-				modalImage: '',
+				modalImage: 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=',
 				modalTitle: '',
 				activeTab: 'gallery',
 				reports: [],
@@ -587,7 +587,7 @@
 
 				// ROI picker state
 				roiOpen: false,
-				roiImage: '',
+				roiImage: 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=',
 				roiImageName: '',
 				roiDragging: false,
 				roiStart: { x: 0, y: 0 },
@@ -599,7 +599,7 @@
 				lastSavedConfigJson: '',
 
 				get anchorPath() {
-					if (!this.modalTitle) return '';
+					if (!this.modalTitle) return 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
 					
 					// Match DJI_XXX where XXX is the group number (e.g., DJI_097)
 					const match = this.modalTitle.match(this.config.rgPatternGroup);
@@ -1227,14 +1227,22 @@
 				init() {
 					// Restore last-used configuration from localStorage
 					this.loadSavedConfig();
-					// Defer fetches so the browser finishes page load first —
-					// requests started during load keep the tab spinner spinning.
-					setTimeout(() => {
+					// Defer background fetches until the page has finished loading.
+					// Requests started before the load event keep the tab spinner
+					// spinning (a fixed 100ms timer is unreliable on slow machines).
+					const startBackgroundFetches = () => {
 						this.fetchOutputFiles();
 						this.fetchReportFiles();
-					}, 100);
+					};
+					if (document.readyState === 'complete') {
+						startBackgroundFetches();
+					} else {
+						window.addEventListener('load', startBackgroundFetches, { once: true });
+					}
 					// Autosave config whenever it changes
-					setInterval(() => this.saveConfig(), 500);
+					this._saveTimer = setInterval(() => this.saveConfig(), 500);
+					// Stop the polling timer so the tab doesn't stay busy after unload
+					window.addEventListener('beforeunload', () => clearInterval(this._saveTimer));
 				},
 
 				loadSavedConfig() {

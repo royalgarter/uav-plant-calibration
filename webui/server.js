@@ -222,6 +222,14 @@ function executeCalibration(config, res) {
 
 	const child = spawn(exePath, args);
 
+	// Watchdog: if the child never exits, the HTTP response stays open and the
+	// browser tab spinner spins forever. Kill it and close the stream.
+	const MAX_RUN_MS = parseInt(process.env.CALIB_MAX_RUN_MS, 10) || 60 * 60 * 1000;
+	const watchdog = setTimeout(() => {
+		console.error('Calibration exceeded timeout, killing process');
+		try { child.kill('SIGKILL'); } catch (e) { /* already gone */ }
+	}, MAX_RUN_MS);
+
 	child.stdout.on('data', data => {
 		res.write(JSON.stringify({ stdout: data.toString() }) + '\n');
 		console.log(`STDOUT: ${data.toString().trim()}`);
@@ -233,6 +241,7 @@ function executeCalibration(config, res) {
 	});
 
 	child.on('close', code => {
+		clearTimeout(watchdog);
 		res.write(JSON.stringify({
 			code,
 			command: `${executable} ${args.join(' ')}`
@@ -241,6 +250,7 @@ function executeCalibration(config, res) {
 	});
 
 	child.on('error', err => {
+		clearTimeout(watchdog);
 		res.write(JSON.stringify({
 			error: `Failed to start process: ${err.message}`,
 			command: `${executable} ${args.join(' ')}`
