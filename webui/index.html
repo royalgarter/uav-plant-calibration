@@ -136,7 +136,7 @@
 								</button>
 							</div>
 
-							<div class="flex items-center" x-show="config.autoRadio && config.doRadio">
+							<div class="flex items-center" x-show="false && config.autoRadio && config.doRadio">
 								<label class="block text-gray-700 w-36 text-xs">Board Thickness</label>
 								<input type="number" x-model="config.autoRadioThickness" class="mt-1 block p-2 border text-xs w-20 lg:w-24 xl:w-48 2xl:w-96">
 								<p class="ml-2 mt-1 text-xs text-gray-500">(px)</br>0=auto</p>
@@ -557,7 +557,7 @@
 					radioTemplatePath: '.input_ref/radiometric_board_03.png',
 					doRadio: true,
 					autoRadio: true,
-					autoRadioThickness: 10,
+					autoRadioThickness: 1,
 					greenCentroidRadius: '500,400',
 					preprocess: {
 						textureThresh: 32.0,
