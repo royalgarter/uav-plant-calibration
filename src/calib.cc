@@ -99,7 +99,7 @@ int main(int argc, char** argv) {
 		
 		bool guiTwoPointClick = false;
 		bool guiAutoDetect = false;
-		int guiBoardThickness = 10;
+		int guiBoardThickness = 1;
 		string guiTemplatePath = radioTemplatePath;
 
 		gConfig.ecc.enabled = true; // Enabled by default in CLI
