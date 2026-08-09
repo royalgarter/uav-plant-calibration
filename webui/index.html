@@ -177,6 +177,9 @@
 									Pick ROI
 								</button>
 							</div>
+							<div class="flex items-center col-span-2">
+								<label class="block text-gray-700 w-36 text-xs uppercase tracking-wide">Thresholds</label>
+							</div>
 							<div class="flex items-center">
 								<label class="block text-gray-700 w-36 text-xs">Texture threshold
 									<span class="help-tip">?<span class="help-text"><span class="help-title">Texture Threshold</span><span>Max local gradient density (Laplacian variance) a pixel may have to be kept. Discards highly-textured moss/gravel noise while keeping smooth leaf surfaces.</span><span class="help-hint">Hint: Range [0, 100]. Lower (e.g. 20) removes more moss; higher keeps more detail. Default 32.0.</span></span></span>
@@ -201,6 +204,9 @@
 								</label>
 								<input type="number" step="any" min="0" max="1" x-model="config.preprocess.solidityThresh" class="block p-2 border text-xs w-20">
 							</div>
+							<div class="flex items-center col-span-2">
+								<label class="block text-gray-700 w-36 text-xs uppercase tracking-wide">Morphology</label>
+							</div>
 							<div class="flex items-center">
 								<label class="block text-gray-700 w-36 text-xs">Median blur size
 									<span class="help-tip">?<span class="help-text"><span class="help-title">Median Blur Kernel</span><br>Kernel size used to remove point noise before morphological filtering. Must be odd.<span class="help-hint">Hint: Range [1, 51], odd only. Default 5. Larger = smoother/noisier image. Use 1 = off.</span></span></span>
@@ -218,6 +224,45 @@
 									<span class="help-tip">?<span class="help-text"><span class="help-title">Closing Kernel (dilate→erode)</span><br>Fills small internal gaps/holes inside a leaf blob so it reads as one solid plant.<span class="help-hint">Hint: Range [1, 51], odd. Default 5. Larger fills bigger holes.</span></span></span>
 								</label>
 								<input type="number" step="2" min="1" max="51" x-model="config.preprocess.closeKernel" class="block p-2 border text-xs w-20">
+							</div>
+							<div class="flex items-center col-span-2">
+								<label class="block text-gray-700 w-36 text-xs uppercase tracking-wide">Advanced</label>
+							</div>
+							<div class="flex items-center">
+								<label class="block text-gray-700 w-36 text-xs">K-Means refine
+									<span class="help-tip">?<span class="help-text"><span class="help-title">Spectral K-Means (K=2)</span>Refines big blobs via K-Means on [Hue, Saturation, NDVI]. Separates green plant pixels from residual background within large clusters.<span class="help-hint">Hint: Boolean flag. Disabled by default. Enable to sharpen plant/background boundary on large blobs.</span></span></span>
+								</label>
+								<div class="flex items-center w-20">
+									<input type="checkbox" x-model="config.preprocess.spectralKMeans" class="h-4 w-4 cursor-pointer accent-green-600">
+								</div>
+							</div>
+							<div class="flex items-center">
+								<label class="block text-gray-700 w-36 text-xs">Spatial cluster
+									<span class="help-tip">?<span class="help-text"><span class="help-title">Spatial Proximity Clustering</span>Drops satellite moss blobs via spatial proximity grouping. Contours whose centroids fall within the merge distance are merged into one cluster; stray clusters are discarded.<span class="help-hint">Hint: Boolean flag. Disabled by default.</span></span></span>
+								</label>
+								<div class="flex items-center w-20">
+									<input type="checkbox" x-model="config.preprocess.spatialCluster" class="h-4 w-4 cursor-pointer accent-green-600">
+								</div>
+							</div>
+							<div class="flex items-center">
+								<label class="block text-gray-700 w-36 text-xs">Spatial merge dist
+									<span class="help-tip">?<span class="help-text"><span class="help-title">Spatial Merge Distance (px)</span>Max centroid distance to merge contours into one cluster. Used by spatial clustering to group nearby blobs.<span class="help-hint">Hint: Range [1, 500]. Default 50. Raise to merge farther-apart blobs.</span></span></span>
+								</label>
+								<input type="number" step="1" min="1" max="500" x-model="config.preprocess.spatialMergeDist" class="block p-2 border text-xs w-20">
+							</div>
+							<div class="flex items-center">
+								<label class="block text-gray-700 w-36 text-xs">Gentle mode
+									<span class="help-tip">?<span class="help-text"><span class="help-title">Stressed-Plant Mode</span>Soft background rejection + central anchor enclosure. Preserves yellow/brown/sparse/small leaves for stressed or early-stage plants.<span class="help-hint">Hint: Boolean flag. Disabled by default.</span></span></span>
+								</label>
+								<div class="flex items-center w-20">
+									<input type="checkbox" x-model="config.preprocess.gentleMode" class="h-4 w-4 cursor-pointer accent-green-600">
+								</div>
+							</div>
+							<div class="flex items-center">
+								<label class="block text-gray-700 w-36 text-xs">Gentle radius
+									<span class="help-tip">?<span class="help-text"><span class="help-title">Gentle Anchor Radius (frac)</span>Anchor radial enclosure as fraction of image width, used in gentle (stressed-plant) mode.<span class="help-hint">Hint: Range [0, 1]. Default 0.38.</span></span></span>
+								</label>
+								<input type="number" step="any" min="0" max="1" x-model="config.preprocess.gentleRadius" class="block p-2 border text-xs w-20">
 							</div>
 						</div>
 						<hr class="my-6">
@@ -522,6 +567,11 @@
 						medianBlur: 5,
 						openKernel: 7,
 						closeKernel: 7,
+						spectralKMeans: false,
+						spatialCluster: false,
+						spatialMergeDist: 50,
+						gentleMode: false,
+						gentleRadius: 0.38,
 					},
 					optimize: true,
 					calc: {
@@ -648,7 +698,7 @@
 
 					if (this.config.greenCentroidRadius) cmd += ` --green-centroid-radius ${this.config.greenCentroidRadius}`;
 					const pre = this.config.preprocess || {};
-					const preDef = { textureThresh: 32.0, ndviThresh: 0.12, minAreaRatio: 0.0015, solidityThresh: 0.50, medianBlur: 5, openKernel: 7, closeKernel: 5 };
+					const preDef = { textureThresh: 32.0, ndviThresh: 0.12, minAreaRatio: 0.0015, solidityThresh: 0.50, medianBlur: 5, openKernel: 7, closeKernel: 5, spatialMergeDist: 50, gentleRadius: 0.38 };
 					if (pre.textureThresh != preDef.textureThresh) cmd += ` --texture-thresh ${pre.textureThresh}`;
 					if (pre.ndviThresh != preDef.ndviThresh) cmd += ` --ndvi-thresh ${pre.ndviThresh}`;
 					if (pre.minAreaRatio != preDef.minAreaRatio) cmd += ` --min-area-ratio ${pre.minAreaRatio}`;
@@ -656,6 +706,11 @@
 					if (pre.medianBlur != preDef.medianBlur) cmd += ` --median-blur ${pre.medianBlur}`;
 					if (pre.openKernel != preDef.openKernel) cmd += ` --open-kernel ${pre.openKernel}`;
 					if (pre.closeKernel != preDef.closeKernel) cmd += ` --close-kernel ${pre.closeKernel}`;
+					if (pre.spectralKMeans) cmd += ' --kmeans';
+					if (pre.spatialCluster) cmd += ' --spatial';
+					if (pre.spatialMergeDist != preDef.spatialMergeDist) cmd += ` --spatial-merge-dist ${pre.spatialMergeDist}`;
+					if (pre.gentleMode) cmd += ' --gentle';
+					if (pre.gentleRadius != preDef.gentleRadius) cmd += ` --gentle-radius ${pre.gentleRadius}`;
 					const indices = Object.keys(this.config.calc).filter(k => this.config.calc[k]).map(k => k.toLowerCase());
 					if (indices.length > 0) {
 						cmd += ` --veg-idx ${indices.join(',')}`;
@@ -674,6 +729,8 @@
 						['NDVI threshold', Number(pre.ndviThresh), -1, 1],
 						['Min area ratio', Number(pre.minAreaRatio), 0, 1],
 						['Solidity threshold', Number(pre.solidityThresh), 0, 1],
+						['Spatial merge dist', Number(pre.spatialMergeDist), 1, 500],
+						['Gentle radius', Number(pre.gentleRadius), 0, 1],
 					];
 					for (const [label, val, min, max] of checks) {
 						if (val === '' || isNaN(val) || val < min || val > max) {

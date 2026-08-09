@@ -149,6 +149,11 @@ function executeCalibration(config, res) {
 		medianBlur: 5,
 		openKernel: 7,
 		closeKernel: 5,
+		spectralKMeans: false,
+		spatialCluster: false,
+		spatialMergeDist: 50,
+		gentleMode: false,
+		gentleRadius: 0.38,
 		...preprocess
 	};
 
@@ -189,6 +194,11 @@ function executeCalibration(config, res) {
 	if (pre.medianBlur !== 5) args.push('--median-blur', String(pre.medianBlur));
 	if (pre.openKernel !== 7) args.push('--open-kernel', String(pre.openKernel));
 	if (pre.closeKernel !== 5) args.push('--close-kernel', String(pre.closeKernel));
+	if (pre.spectralKMeans) args.push('--kmeans');
+	if (pre.spatialCluster) args.push('--spatial');
+	if (pre.spatialMergeDist !== 50) args.push('--spatial-merge-dist', String(pre.spatialMergeDist));
+	if (pre.gentleMode) args.push('--gentle');
+	if (pre.gentleRadius !== 0.38) args.push('--gentle-radius', String(pre.gentleRadius));
 
 	const indices = Object.keys(calc).filter(k => calc[k]).map(k => k.toLowerCase());
 	if (indices.length > 0) {
