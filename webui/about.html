@@ -50,7 +50,7 @@
 				The output is a set of co-registered, calibrated index maps together with CSV reports for quantitative analysis.
 			</p>
 			<div class="bg-gray-100 p-4 text-sm font-mono text-gray-700">
-				./calib &lt;input_dir&gt; &lt;output_dir&gt; [--radio] [--auto] [--optimize] [--veg-idx=ndvi,...] [--green-centroid-radius &lt;px&gt;]
+				./calib &lt;input_dir&gt; &lt;output_dir&gt; [--radio] [--auto] [--optimize] [--veg-idx=ndvi,...] [--green-centroid-radius &lt;px&gt;] [--color-mask &lt;h,s,v;...&gt; --color-tol &lt;h,s,v&gt;] [--kmeans] [--spatial [--spatial-merge-dist &lt;px&gt;]] [--gentle [--gentle-radius &lt;frac&gt;]]
 			</div>
 			<pre class="bg-gray-900 text-green-400 p-4 mt-4 text-xs leading-5 overflow-x-auto rounded">
 		                    ┌──────────────────────┐
@@ -447,6 +447,45 @@
 				</li>
 			</ol>
 
+			<h3 class="text-base font-semibold text-gray-800 mt-4 mb-2">Color-Spot Leaf Selection</h3>
+			<p class="text-sm text-gray-600 leading-relaxed mb-3">
+				Instead of the default green filter, you can drive segmentation from colours you pick 
+				on real leaves. In the Web UI, click <strong>Pick Color Leaves</strong> to open the input 
+				folder's images, then left-click leaf areas to capture one or more HSV spots. Each spot is 
+				expanded by a single global HSV tolerance and OR'ed into a <code>color-mask</code> that 
+				replaces the default saturation/chroma and RGB PlantIndex stages. The mask is combined 
+				with the Low-NDVI and Texture filters. Hue wraps correctly at the 0/180 boundary.
+			</p>
+			<ul class="text-sm text-gray-600 list-disc list-inside mb-3 space-y-1">
+				<li><code>--color-mask &lt;h,s,v;h,s,v;...&gt;</code> — one or more HSV spot centres (hue uses OpenCV 0–180).</li>
+				<li><code>--color-tol &lt;h,s,v&gt;</code> — global per-spot HSV tolerance (defaults 15, 40, 40).</li>
+			</ul>
+
+			<h3 class="text-base font-semibold text-gray-800 mt-4 mb-2">Advanced Preprocessing Options</h3>
+			<p class="text-sm text-gray-600 leading-relaxed mb-3">
+				Three optional refinement stages are available to separate genuine plant canopies from 
+				confusing background such as moss, drought-stressed leaves, or satellite blobs:
+			</p>
+			<ul class="text-sm text-gray-600 list-disc list-inside mb-3 space-y-1">
+				<li>
+					<code>--kmeans</code> — spectral K-Means clustering of the candidate mask in HSV/NDVI space. 
+					The plant cluster is kept, and a <strong>convex-hull region</strong> (expanded 1.2&times; 
+					about the plant centroid) bounds the final mask. When the two clusters' bounding boxes 
+					overlap (one canopy split by clustering) the hull is built over the union so nothing is 
+					amputated.
+				</li>
+				<li>
+					<code>--spatial</code> — spatial proximity clustering. Contours whose centroids fall within 
+					<code>--spatial-merge-dist</code> pixels (default 50) are merged into one cluster; stray 
+					satellite blobs are discarded.
+				</li>
+				<li>
+					<code>--gentle</code> — gentle/stressed-plant mode, with a soft background rejection tuned 
+					to preserve yellow/brown leaves. <code>--gentle-radius</code> (default 0.38) controls the 
+					anchor radial enclosure as a fraction of image width.
+				</li>
+			</ul>
+
 			<pre class="bg-gray-900 text-green-400 p-4 mt-4 text-xs leading-5 overflow-x-auto rounded">
                     ┌───────────────────────────────┐
                     │   RGB image (band 0)          │
@@ -528,6 +567,23 @@
 				<strong>Radiometric Calibration</strong>, and <strong>Vegetation Indices</strong> 
 				output directories. Images are loaded as thumbnails; clicking one opens the 
 				full-resolution viewer with overlay controls.
+			</p>
+
+			<h3 class="text-base font-semibold text-gray-800 mt-4 mb-2">Image Navigation</h3>
+			<p class="text-sm text-gray-600 leading-relaxed mb-3">
+				Inside the full-resolution viewer you can move through every image in the current folder with 
+				the <strong>left/right arrow keys</strong> or the on-screen chevron buttons. Navigation wraps 
+				around at the ends, and the anchor/overlay layer updates to match each newly selected image.
+			</p>
+
+			<h3 class="text-base font-semibold text-gray-800 mt-4 mb-2">Pick Color Leaves</h3>
+			<p class="text-sm text-gray-600 leading-relaxed mb-3">
+				In the preprocessing panel, <strong>Pick Color Leaves</strong> opens the input folder's RGB 
+				images. Use the <strong>left/right arrow keys</strong> or chevron buttons to browse across 
+				images in different lighting/plant conditions, and left-click on leaf areas to capture color 
+				spots. Each spot is expanded by the global HSV tolerance into a segmentation mask that 
+				replaces the default green filter. Spots persist across image navigation; use the <code>x</code> 
+				on a spot to remove it or <strong>Reset</strong> to return to the default green filter.
 			</p>
 
 			<h3 class="text-base font-semibold text-gray-800 mt-4 mb-2">Overlay Comparison</h3>
