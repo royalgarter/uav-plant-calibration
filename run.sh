@@ -76,6 +76,9 @@ case "$1" in
     "example:calib")
         run_cmd env $LD_LINUX ./calib .input .output --optimize --green-centroid-radius 500,400
         ;;
+    "example:calib-green")
+        run_cmd env $LD_LINUX ./calib .input .output --optimize --green-centroid-radius 500,400 --kmeans --cluster
+        ;;
     "example:calib-radio")
         run_cmd env $LD_LINUX ./calib .input .output --optimize --green-centroid-radius 500,400 --radio 0,25
         ;;

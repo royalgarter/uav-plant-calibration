@@ -42,6 +42,9 @@ void showUsage() {
 	cout << "  --gentle     Stressed-plant mode: soft background rejection + central anchor enclosure." << endl;
 	cout << "               Preserves yellow/brown/sparse/small leaves. Optional: --gentle-radius <frac>" << endl;
 	cout << "               (anchor radial enclosure as fraction of image width, default 0.38)." << endl;
+	cout << "  --color-mask H,S,V[;H,S,V...]  Color-spot HSV leaf selection (replaces default green filter)." << endl;
+	cout << "               OpenCV hue range [0,180]. Repeat separated by ';' for multiple spots." << endl;
+	cout << "  --color-tol H,S,V  Global HSV tolerance applied to every color spot (default: 15,40,40)." << endl;
 #ifdef WINGUI
 	cout << "  --gui         Launch Windows GUI interface." << endl;
 #endif
@@ -275,6 +278,41 @@ int main(int argc, char** argv) {
 				greenParams.gentleMode = true;
 			} else if (arg == "--gentle-radius") {
 				if (i + 1 < argc && argv[i+1][0] != '-') { greenParams.anchorRadiusRatio = atof(argv[i+1]); i++; }
+			} else if (arg == "--color-mask") {
+				if (i + 1 < argc && argv[i+1][0] != '-') {
+					string val = argv[i+1];
+					stringstream ss(val);
+					string spotStr;
+					while (getline(ss, spotStr, ';')) {
+						vector<string> parts;
+						stringstream s2(spotStr);
+						string seg;
+						while (getline(s2, seg, ',')) parts.push_back(seg);
+						if (parts.size() >= 3) {
+							GreenMaskParams::ColorSpot spot;
+							try {
+								spot.h = stoi(parts[0]);
+								spot.s = stoi(parts[1]);
+								spot.v = stoi(parts[2]);
+								greenParams.colorSpots.push_back(spot);
+							} catch (...) {}
+						}
+					}
+					i++;
+				}
+			} else if (arg == "--color-tol") {
+				if (i + 1 < argc && argv[i+1][0] != '-') {
+					string val = argv[i+1];
+					vector<string> parts;
+					stringstream ss(val);
+					string seg;
+					while (getline(ss, seg, ',')) parts.push_back(seg);
+					auto toInt = [](const string& s) -> int { try { return stoi(s); } catch (...) { return -1; } };
+					if (parts.size() >= 1 && toInt(parts[0]) >= 0) greenParams.hsvTolH = toInt(parts[0]);
+					if (parts.size() >= 2 && toInt(parts[1]) >= 0) greenParams.hsvTolS = toInt(parts[1]);
+					if (parts.size() >= 3 && toInt(parts[2]) >= 0) greenParams.hsvTolV = toInt(parts[2]);
+					i++;
+				}
 			} else {
 				args.push_back(arg);
 			}

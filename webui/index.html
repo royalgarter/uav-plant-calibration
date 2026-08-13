@@ -172,10 +172,48 @@
 									<span class="help-tip">?<span class="help-text"><span class="help-title">Green Centroid Radius (px)</span>Crops the analysis to an ellipse (center + radii), removing border/edge noise and out-of-focus plants outside the focused plant.<span class="help-hint">Hint: Format "centerX,centerY,radiusX,radiusY" (e.g. 2700,1800,200,300). "radiusX,radiusY" = center at image center. Single "r" = both radii. 0 = disabled. Use the "Pick ROI" button to draw the region visually.</span></span></span>
 								</label>
 								<input type="text" x-model="config.greenCentroidRadius" class="block p-2 border text-xs w-28">
-								<button @click="openRoiPicker()" type="button" class="cursor-pointer h-8 ml-1 px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs flex items-center" title="Draw ROI region on first input image">
+<button @click="openRoiPicker()" type="button" class="cursor-pointer h-8 ml-1 px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs flex items-center" title="Draw ROI region on first input image">
 									<svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4h4v4H4zM4 16h4v4H4zM16 4h4v4h-4zM16 16h4v4h-4z"></path></svg>
 									Pick ROI
 								</button>
+							</div>
+							<div class="flex items-center col-span-2">
+								<label class="block text-gray-700 w-36 text-xs">Color leaf spots
+									<span class="help-tip">?<span class="help-text"><span class="help-title">Color Leaf Spots</span>Pick colors directly from an RGB image. Each left-click on the image captures a leaf color; every spot is expanded by a single global HSV tolerance into a mask that replaces the default green filter.<span class="help-hint">Hint: Click "Pick Color Leaves" to open the image, then left-click on leaf areas to add spots. Use the "x" on a pad to remove it. Adjust the H/S/V tolerance (hue uses OpenCV 0-180) to widen/narrow the range. "Reset" clears all spots back to the default green filter.</span></span></span>
+								</label>
+								<div class="flex items-center">
+									<button @click="openColorPicker()" type="button" class="cursor-pointer h-8 px-2 py-1 bg-green-600 hover:bg-green-700 text-white text-xs flex items-center" title="Pick leaf colors on first input image">
+										<svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"></path></svg>
+										Pick Color Leaves
+									</button>
+									<button @click="resetColorSpots()" type="button" :disabled="!config.colorSpots.length" class="cursor-pointer h-8 ml-1 px-2 py-1 bg-gray-500 hover:bg-gray-600 disabled:bg-gray-300 text-white text-xs flex items-center" title="Clear all color spots (back to default green filter)">
+										Reset
+									</button>
+								</div>
+							</div>
+							<div class="flex items-center col-span-2" x-show="config.colorSpots.length">
+								<label class="block text-gray-700 w-36 text-xs">HSV tolerance</label>
+								<div class="flex items-center gap-2 text-xs">
+									<span class="text-gray-600">H</span>
+									<input type="number" step="1" min="0" max="90" x-model.number="config.colorTol.h" class="block p-1 border text-xs w-8">
+									<span class="text-gray-600">S</span>
+									<input type="number" step="1" min="0" max="255" x-model.number="config.colorTol.s" class="block p-1 border text-xs w-8">
+									<span class="text-gray-600">V</span>
+									<input type="number" step="1" min="0" max="255" x-model.number="config.colorTol.v" class="block p-1 border text-xs w-8">
+								</div>
+							</div>
+							<div class="col-span-2" x-show="config.colorSpots.length">
+								<div class="flex flex-wrap gap-2 mt-1">
+									<template x-for="(spot, i) in config.colorSpots" :key="i">
+										<div class="flex items-center gap-1 border border-gray-300 rounded px-1 py-0.5 bg-white" :title="`H=${spot.h} S=${spot.s} V=${spot.v}  RGB=${spot.r},${spot.g},${spot.b}`">
+											<div class="w-8 h-4 rounded" :style="`background: linear-gradient(90deg, hsl(${spot.h * 2}, 100%, 60%), hsl(${(spot.h + (config.colorTol.h || 15)) * 2}, 100%, 60%))`;"></div>
+											<span class="text-gray-700" x-text="`#${spot.hex || ''}`"></span>
+											<button @click="clearColorSpot(i)" type="button" class="text-gray-400 hover:text-red-600 font-bold px-0.5" title="Remove this color spot">
+												<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+											</button>
+										</div>
+									</template>
+								</div>
 							</div>
 							<div class="flex items-center col-span-2">
 								<label class="block text-gray-700 w-36 text-xs uppercase tracking-wide">Thresholds</label>
@@ -419,6 +457,8 @@
 		<!-- Image Modal -->
 		<div id="main-image-modal" x-show="modalOpen" x-cloak class="fixed top-0 left-0 right-0 bottom-0 z-20 flex items-center justify-center p-4 bg-black select-none"
 			@keydown.escape.window="modalOpen = false"
+			@keydown.left.window="modalOpen && navigateImage(-1)"
+			@keydown.right.window="modalOpen && navigateImage(1)"
 			@mousemove="doDraggingProfile($event)"
 			@mouseup="stopDraggingProfile()"
 		>
@@ -432,6 +472,14 @@
 			<button @click="modalOpen = false" class="absolute top-4 right-4 text-white hover:text-gray-300 z-20">
 				<svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
 			</button>
+			<button @click="navigateImage(-1)" class="absolute left-4 top-1/2 -translate-y-1/2 z-20 p-2 text-white hover:text-gray-300 disabled:opacity-30"
+				:disabled="files.length <= 1">
+				<svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+			</button>
+			<button @click="navigateImage(1)" class="absolute right-4 top-1/2 -translate-y-1/2 z-20 p-2 text-white hover:text-gray-300 disabled:opacity-30"
+				:disabled="files.length <= 1">
+				<svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+			</button>
 			<div class="relative max-w-[95vw] max-h-[95vh] flex flex-col items-center bg-gray-900/50 rounded-lg p-2">
 				<p class="text-white font-semibold" x-text="modalTitle"></p>
 				<div class="relative inline-block shadow-2xl rounded overflow-hidden bg-black" style="min-width: 300px; min-height: 200px;">
@@ -441,7 +489,7 @@
 					
 					<!-- Top Layer: Selected Image -->
 					<img :src="modalImage" class="absolute top-0 left-0 w-full h-full block select-none cursor-crosshair" 
-						 :style="'opacity: ' + (overlayOpacity/100)" @click="handleModalImageClick($event)" x-ref="modalImg" alt="Selected Image">
+						 :style="{ opacity: overlayOpacity / 100 }" @click="handleModalImageClick($event)" x-ref="modalImg" alt="Selected Image">
 
 					<!-- Connecting Line -->
 
@@ -537,14 +585,68 @@
 					x-text="roiPixels"></p>
 				<p class="text-xs text-red-400 mt-2 text-center" x-show="roiError" x-text="roiError"></p>
 
-				<div class="flex gap-2 mt-2">
-					<button @click="applyRoi()" :disabled="!roiImage" type="button"
-						class="cursor-pointer px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white text-sm rounded">Apply ROI</button>
-					<button @click="roiOpen = false" type="button"
-						class="cursor-pointer px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white text-sm rounded">Cancel</button>
-				</div>
+<div class="flex gap-2 mt-2">
+				<button @click="applyRoi()" :disabled="!roiImage" type="button"
+					class="cursor-pointer px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white text-sm rounded">Apply ROI</button>
+				<button @click="roiOpen = false" type="button"
+					class="cursor-pointer px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white text-sm rounded">Cancel</button>
 			</div>
 		</div>
+	</div>
+
+	<!-- Color Leaf Spot Picker Modal -->
+	<div id="color-picker-modal" x-show="colorOpen" x-cloak class="fixed top-0 left-0 right-0 bottom-0 z-40 flex items-center justify-center p-4 bg-black/70 select-none"
+		@keydown.escape.window="colorOpen = false"
+		@keydown.left.window="colorOpen && navigateColor(-1)"
+		@keydown.right.window="colorOpen && navigateColor(1)">
+		<button @click="colorOpen = false" class="absolute top-4 right-4 text-white hover:text-gray-300 z-20">
+			<svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+		</button>
+		<button @click="navigateColor(-1)" class="absolute left-4 top-1/2 -translate-y-1/2 z-20 p-2 text-white hover:text-gray-300 disabled:opacity-30"
+			:disabled="colorImages.length <= 1">
+			<svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+		</button>
+		<button @click="navigateColor(1)" class="absolute right-4 top-1/2 -translate-y-1/2 z-20 p-2 text-white hover:text-gray-300 disabled:opacity-30"
+			:disabled="colorImages.length <= 1">
+			<svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+		</button>
+		<div class="relative max-w-[95vw] max-h-[95vh] flex flex-col items-center bg-gray-900/70 rounded-lg p-3">
+			<p class="text-white font-semibold text-sm mb-1">Pick leaf colors on <span class="text-fuchsia-400" x-text="colorImageName"></span></p>
+			<p class="text-gray-400 text-xs mb-2">Left-click on leaf areas to capture colors. Each click adds a spot expanded by the global HSV tolerance.</p>
+			<div class="relative inline-block shadow-2xl rounded overflow-hidden bg-black" style="min-width: 300px; min-height: 200px;"
+				@mousemove="colorHoverMove($event)">
+				<img :src="colorImage" x-ref="colorImg" class="max-w-full max-h-[80vh] block select-none cursor-crosshair" draggable="false"
+					@click="colorPick($event)" @load="colorMsg = 'Image loaded. Click on leaf areas to capture colors.'" alt="Color Image">
+
+				<template x-if="colorHover">
+					<div class="absolute pointer-events-none"
+						:style="`left: ${colorHover.percentX}%; top: ${colorHover.percentY}%; transform: translate(-50%, -50%);`">
+						<div class="w-5 h-5 rounded-full border-2 border-white shadow" :style="`background: ${colorHover.rgb};`"></div>
+					</div>
+				</template>
+			</div>
+
+			<div class="flex flex-wrap gap-2 mt-3 justify-center max-w-[90vw]" x-show="config.colorSpots.length">
+				<template x-for="(spot, i) in config.colorSpots" :key="i">
+					<div class="flex items-center gap-1 border border-white/40 rounded px-1 py-0.5 bg-black/40" :title="`H=${spot.h} S=${spot.s} V=${spot.v}  RGB=${spot.r},${spot.g},${spot.b}`">
+						<div class="w-8 h-4 rounded" :style="`background: linear-gradient(90deg, hsl(${spot.h * 2}, 100%, 60%), hsl(${(spot.h + (config.colorTol.h || 15)) * 2}, 100%, 60%))`;"></div>
+						<span class="text-gray-200 text-xs" x-text="`#${spot.hex || ''}`"></span>
+						<button @click="clearColorSpot(i)" type="button" class="text-gray-400 hover:text-red-400 font-bold px-0.5" title="Remove this color spot">
+							<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+						</button>
+					</div>
+				</template>
+			</div>
+
+			<p class="text-xs text-gray-400 mt-2 text-center" x-show="colorMsg" x-text="colorMsg"></p>
+			<p class="text-xs text-red-400 mt-2 text-center" x-show="colorError" x-text="colorError"></p>
+
+			<div class="flex gap-2 mt-2">
+				<button @click="colorOpen = false" type="button"
+					class="cursor-pointer px-4 py-2 bg-fuchsia-600 hover:bg-fuchsia-500 text-white text-sm rounded">Done</button>
+			</div>
+		</div>
+	</div>
 	</div>
 
 	<script>
@@ -559,6 +661,8 @@
 					autoRadio: true,
 					autoRadioThickness: 1,
 					greenCentroidRadius: '500,400',
+					colorSpots: [],
+					colorTol: { h: 15, s: 40, v: 40 },
 					preprocess: {
 						textureThresh: 32.0,
 						ndviThresh: 0.12,
@@ -615,6 +719,7 @@
 				modalOpen: false,
 				modalImage: 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=',
 				modalTitle: '',
+				modalIndex: -1,
 				activeTab: 'gallery',
 				reports: [],
 				selectedReport: '',
@@ -644,6 +749,16 @@
 				roiEnd: { x: 0, y: 0 },
 				roiMsg: '',
 				roiError: '',
+
+				// Color picker (leaf color spots) state
+				colorOpen: false,
+				colorImage: 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=',
+				colorImageName: '',
+				colorImages: [],
+				colorIndex: -1,
+				colorMsg: '',
+				colorError: '',
+				colorHover: null,
 
 				// Config persistence
 				lastSavedConfigJson: '',
@@ -697,6 +812,12 @@
 					if (this.config.optimize) cmd += ' --optimize';
 
 					if (this.config.greenCentroidRadius) cmd += ` --green-centroid-radius ${this.config.greenCentroidRadius}`;
+					if (this.config.colorSpots && this.config.colorSpots.length) {
+						const spots = this.config.colorSpots.map(s => `${s.h},${s.s},${s.v}`).join(';');
+						cmd += ` --color-mask ${spots}`;
+						const tol = this.config.colorTol || {};
+						cmd += ` --color-tol ${tol.h != null ? tol.h : 15},${tol.s != null ? tol.s : 40},${tol.v != null ? tol.v : 40}`;
+					}
 					const pre = this.config.preprocess || {};
 					const preDef = { textureThresh: 32.0, ndviThresh: 0.12, minAreaRatio: 0.0015, solidityThresh: 0.50, medianBlur: 5, openKernel: 7, closeKernel: 5, spatialMergeDist: 50, gentleRadius: 0.38 };
 					if (pre.textureThresh != preDef.textureThresh) cmd += ` --texture-thresh ${pre.textureThresh}`;
@@ -892,11 +1013,23 @@
 				},
 
 				openModal(file) {
+					this.modalIndex = this.files.findIndex(f => f.name === file.name);
+					this.setModalImage(file);
+				},
+
+				setModalImage(file) {
 					this.modalImage = '/'/*IMPORTANT: relative path*/ + this.currentPath + '/' + file.name;
 					this.modalTitle = file.name;
 					this.modalOpen = true;
 					this.linePoints = [];
 					this.showProfileModal = false;
+				},
+
+				navigateImage(dir) {
+					if (!this.files.length) return;
+					const n = this.files.length;
+					this.modalIndex = (this.modalIndex + dir + n) % n;
+					this.setModalImage(this.files[this.modalIndex]);
 				},
 
 				handleModalImageClick(e) {
@@ -1279,6 +1412,110 @@
 					this.config.greenCentroidRadius = `${centerX},${centerY},${radiusX},${radiusY}`;
 					this.roiMsg = `ROI set. centerX=${centerX}, centerY=${centerY}, radiusX=${radiusX}, radiusY=${radiusY}`;
 					this.roiOpen = false;
+				},
+
+				openColorPicker() {
+					this.colorOpen = true;
+					this.colorMsg = '';
+					this.colorError = '';
+					this.colorImage = '';
+					this.colorImageName = '';
+					this.colorImages = [];
+					this.colorIndex = -1;
+					this.colorHover = null;
+					const dir = this.config.inDir || '.input';
+					fetch(`/list?dir=${encodeURIComponent(dir)}`)
+						.then(r => r.json())
+						.then(list => {
+							if (!Array.isArray(list)) throw new Error('Bad directory listing');
+							const displayable = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'];
+							this.colorImages = list
+								.filter(f => !f.isDirectory && displayable.includes(f.ext))
+								.map(f => ({ name: f.name, url: '/' + dir + '/' + encodeURIComponent(f.name) }));
+							if (!this.colorImages.length) {
+								this.colorError = 'No displayable image found in ' + dir;
+								return;
+							}
+							this.colorIndex = 0;
+							this.colorImage = this.colorImages[0].url;
+							this.colorImageName = this.colorImages[0].name;
+						})
+						.catch(e => { this.colorError = e.toString(); });
+				},
+
+				navigateColor(dir) {
+					if (!this.colorImages.length) return;
+					const n = this.colorImages.length;
+					this.colorIndex = (this.colorIndex + dir + n) % n;
+					this.colorImageName = this.colorImages[this.colorIndex].name;
+					this.colorImage = this.colorImages[this.colorIndex].url;
+					this.colorHover = null;
+				},
+
+				colorHoverMove(e) {
+					const img = this.$refs.colorImg;
+					if (!img) { this.colorHover = null; return; }
+					const rect = img.getBoundingClientRect();
+					const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+					const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+					const color = this.readPixel(x, y);
+					this.colorHover = color ? { percentX: x * 100, percentY: y * 100, rgb: color.rgb } : null;
+				},
+
+				readPixel(relX, relY) {
+					const img = this.$refs.colorImg;
+					if (!img || !img.naturalWidth) return null;
+					const W = img.naturalWidth, H = img.naturalHeight;
+					const px = Math.round(relX * (W - 1));
+					const py = Math.round(relY * (H - 1));
+					const canvas = document.createElement('canvas');
+					canvas.width = W;
+					canvas.height = H;
+					const ctx = canvas.getContext('2d');
+					ctx.drawImage(img, 0, 0);
+					const d = ctx.getImageData(px, py, 1, 1).data;
+					return { r: d[0], g: d[1], b: d[2], rgb: `rgb(${d[0]},${d[1]},${d[2]})` };
+				},
+
+				colorPick(e) {
+					const img = this.$refs.colorImg;
+					if (!img || !img.naturalWidth) return;
+					const rect = img.getBoundingClientRect();
+					const relX = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+					const relY = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+					const color = this.readPixel(relX, relY);
+					if (!color) return;
+					// RGB (0-255) -> OpenCV HSV (H 0-180, S/V 0-255)
+					const r = color.r / 255, g = color.g / 255, b = color.b / 255;
+					const max = Math.max(r, g, b), min = Math.min(r, g, b);
+					const delta = max - min;
+					let h = 0;
+					if (delta > 0) {
+						if (max === r) h = 60 * (((g - b) / delta) % 6);
+						else if (max === g) h = 60 * ((b - r) / delta + 2);
+						else h = 60 * ((r - g) / delta + 4);
+					}
+					if (h < 0) h += 360;
+					const hue = Math.round(h / 2);
+					const sat = Math.round((max === 0 ? 0 : delta / max) * 255);
+					const val = Math.round(max * 255);
+					const hex = ((1 << 24) | (color.r << 16) | (color.g << 8) | color.b).toString(16).slice(1);
+					this.config.colorSpots.push({ h: hue, s: sat, v: val, r: color.r, g: color.g, b: color.b, hex });
+					this.colorMsg = `Added spot: H=${hue} S=${sat} V=${val} RGB=${color.r},${color.g},${color.b}`;
+					this.colorError = '';
+				},
+
+				clearColorSpot(i) {
+					this.config.colorSpots.splice(i, 1);
+					this.colorMsg = this.config.colorSpots.length
+						? `${this.config.colorSpots.length} color spot(s) selected`
+						: 'All color spots cleared.';
+				},
+
+				resetColorSpots() {
+					this.config.colorSpots = [];
+					this.config.colorTol = { h: 15, s: 40, v: 40 };
+					this.colorMsg = 'Color spots reset to default green filter.';
 				},
 
 				init() {

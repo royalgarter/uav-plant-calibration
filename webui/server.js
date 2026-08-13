@@ -136,6 +136,8 @@ function executeCalibration(config, res) {
 		radioTemplatePath = '',
 		greenCentroidRadius = '',
 		preprocess = {},
+		colorSpots = [],
+		colorTol = { h: 15, s: 40, v: 40 },
 		optimize = false,
 		calc = {}
 	} = config;
@@ -185,6 +187,15 @@ function executeCalibration(config, res) {
 
 	if (greenCentroidRadius) {
 		args.push('--green-centroid-radius', greenCentroidRadius);
+	}
+
+	if (Array.isArray(colorSpots) && colorSpots.length > 0) {
+		const spotList = colorSpots
+			.map(s => `${s.h},${s.s},${s.v}`)
+			.join(';');
+		args.push('--color-mask', spotList);
+		const tol = colorTol || {};
+		args.push('--color-tol', `${tol.h != null ? tol.h : 15},${tol.s != null ? tol.s : 40},${tol.v != null ? tol.v : 40}`);
 	}
 
 	if (pre.textureThresh !== 32.0) args.push('--texture-thresh', String(pre.textureThresh));

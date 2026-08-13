@@ -1074,6 +1074,43 @@ static Mat computeNonConcreteMask(const Mat& rgbImg) {
 }
 
 // ============================================================================
+// COLOR SPOT HSV MASK: builds segmentation from user-picked leaf color spots.
+// Each spot (HSV center) is expanded by the global H/S/V tolerance and OR'ed.
+// Handles hue wraparound at the 0/180 boundary of OpenCV's hue range.
+// ============================================================================
+Mat computeColorSpotMask(const Mat& rgbImg, const GreenMaskParams& params) {
+	if (rgbImg.empty() || params.colorSpots.empty()) return Mat();
+	Mat hsv;
+	cvtColor(rgbImg, hsv, COLOR_BGR2HSV);
+	Mat acc = Mat::zeros(rgbImg.size(), CV_8U);
+	for (const auto& spot : params.colorSpots) {
+		int hLo = spot.h - params.hsvTolH;
+		int hHi = spot.h + params.hsvTolH;
+		Mat lo, hi;
+		if (hLo < 0) {
+			// wrap: [0, hHi] | [hLo+180, 180]
+			inRange(hsv, Scalar(0, max(0, spot.s - params.hsvTolS), max(0, spot.v - params.hsvTolV)),
+			             Scalar(hHi, min(255, spot.s + params.hsvTolS), min(255, spot.v + params.hsvTolV)), lo);
+			inRange(hsv, Scalar(hLo + 180, max(0, spot.s - params.hsvTolS), max(0, spot.v - params.hsvTolV)),
+			             Scalar(180, min(255, spot.s + params.hsvTolS), min(255, spot.v + params.hsvTolV)), hi);
+			bitwise_or(lo, hi, lo);
+		} else if (hHi > 180) {
+			// wrap: [hLo, 180] | [0, hHi-180]
+			inRange(hsv, Scalar(hLo, max(0, spot.s - params.hsvTolS), max(0, spot.v - params.hsvTolV)),
+			             Scalar(180, min(255, spot.s + params.hsvTolS), min(255, spot.v + params.hsvTolV)), lo);
+			inRange(hsv, Scalar(0, max(0, spot.s - params.hsvTolS), max(0, spot.v - params.hsvTolV)),
+			             Scalar(hHi - 180, min(255, spot.s + params.hsvTolS), min(255, spot.v + params.hsvTolV)), hi);
+			bitwise_or(lo, hi, lo);
+		} else {
+			inRange(hsv, Scalar(hLo, max(0, spot.s - params.hsvTolS), max(0, spot.v - params.hsvTolV)),
+			             Scalar(hHi, min(255, spot.s + params.hsvTolS), min(255, spot.v + params.hsvTolV)), lo);
+		}
+		bitwise_or(acc, lo, acc);
+	}
+	return acc;
+}
+
+// ============================================================================
 // GENTLE HELPER 1: Soft Background Rejection (Preserves Yellow/Brown Leaves)
 // ============================================================================
 Mat computeSoftNonConcreteMask(const Mat& rgbImg) {
@@ -1208,13 +1245,16 @@ static Mat computeLowNDVIMask(const map<int, Mat>& bands, Size targetSize, float
 	return Mat();
 }
 
-Mat refineMaskWithKMeans(const Mat& candidateMask, const Mat& rgbImg, const Mat& ndviImg) {
+// Build a REGION mask (0/255) from the spectral K-Means plant cluster: the
+// convex hull of the plant pixels, expanded 1.2x about the plant centroid.
+// Returns an empty Mat when there is nothing to refine (caller keeps default).
+Mat refineMaskWithKMeansRegion(const Mat& candidateMask, const Mat& rgbImg, const Mat& ndviImg) {
 	const double eps = 1e-6;
 	vector<Point> candPoints;
 	findNonZero(candidateMask, candPoints);
 
 	// Too few pixels to cluster meaningfully
-	if ((int)candPoints.size() < 100) return candidateMask.clone();
+	if ((int)candPoints.size() < 100) return Mat();
 
 	Mat hsv;
 	cvtColor(rgbImg, hsv, COLOR_BGR2HSV);
@@ -1251,17 +1291,60 @@ Mat refineMaskWithKMeans(const Mat& candidateMask, const Mat& rgbImg, const Mat&
 	const float scoreMoss = std::min(score0, score1);
 	// Require a sizeable spectral gap so we never split one plant into two halves.
 	if (scoreMoss > 0.85f * scorePlant) {
-		return candidateMask.clone();
+		return Mat();
 	}
 
-	// Drop only the pixels belonging to the clearly-inferior spectral cluster.
-	Mat refinedMask = candidateMask.clone();
+	// Split candidate points into plant / moss cluster pixel lists.
+	vector<Point> plantPts, mossPts;
+	plantPts.reserve(candPoints.size());
+	mossPts.reserve(candPoints.size());
 	for (size_t i = 0; i < candPoints.size(); ++i) {
-		if (labels.at<int>((int)i) == mossClusterIdx) {
-			refinedMask.at<uchar>(candPoints[i].y, candPoints[i].x) = 0;
-		}
+		if (labels.at<int>((int)i) == plantClusterIdx) plantPts.push_back(candPoints[i]);
+		else mossPts.push_back(candPoints[i]);
 	}
-	return refinedMask;
+	if (plantPts.empty()) return Mat();
+
+	// Spatial contiguity safeguard: if the two clusters' bounding boxes overlap
+	// they are really one canopy split by K-Means, so build the hull over BOTH
+	// clusters (nothing gets amputated). Only when moss is spatially disjoint do
+	// we treat it as genuine background and hull the plant cluster alone.
+	Rect rPlant = boundingRect(plantPts);
+	Rect rMoss = mossPts.empty() ? Rect() : boundingRect(mossPts);
+	bool contiguous = !mossPts.empty() && ((rPlant & rMoss).area() > 0);
+
+	vector<Point> hullPts = plantPts;
+	if (mossPts.empty()) {
+		hullPts = plantPts;
+	} else if (contiguous) {
+		hullPts.insert(hullPts.end(), mossPts.begin(), mossPts.end());
+	} else if (mossPts.size() >= 0.3 * (double)plantPts.size()) {
+		// Majority/co-extensive moss (e.g. drought-stressed leaves that scored
+		// into the low-S/NDVI cluster): keep it, build the hull over the union
+		// so the plant is not amputated.
+		hullPts.insert(hullPts.end(), mossPts.begin(), mossPts.end());
+	}
+	// else: genuinely small, spatially disjoint satellite -> hull over plantPts.
+
+	vector<Point> hull;
+	convexHull(hullPts, hull);
+	if (hull.size() < 3) return Mat();
+
+	// Plant centroid (of the plant cluster, not the union) as expansion anchor.
+	Moments mu = moments(plantPts);
+	Point2f c(mu.m10 / (mu.m00 + eps), mu.m01 / (mu.m00 + eps));
+
+	// Expand hull 1.2x about the plant centroid, then fill the polygon.
+	const float scale = 1.2f;
+	vector<Point> scaled;
+	scaled.reserve(hull.size());
+	for (const Point& v : hull) {
+		scaled.push_back(Point((int)cvRound(c.x + scale * (v.x - c.x)),
+		                       (int)cvRound(c.y + scale * (v.y - c.y))));
+	}
+
+	Mat region = Mat::zeros(candidateMask.size(), CV_8U);
+	fillConvexPoly(region, scaled, Scalar(255));
+	return region;
 }
 
 Mat filterSatelliteClusters(const Mat& inputMask, double maxMergeDistancePx) {
@@ -1393,29 +1476,46 @@ GreenMaskResults applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const 
 	// ------------------------------------------------------------------------
 	// STEP 1: Background Subtraction & Low-NDVI & Texture Masks
 	// ------------------------------------------------------------------------
+	// Color-spot HSV selection replaces the default green color filter (kept as
+	// the default preset). When spots are supplied, the HSV color mask stands in
+	// for the saturation/chroma (and RGB PlantIndex) segmentation stages.
+	Mat colorMask;
+	bool useColorSpots = !params.colorSpots.empty();
+	if (useColorSpots) {
+		colorMask = computeColorSpotMask(rgbImg, params);
+	}
 	Mat nonConcreteMask = computeNonConcreteMask(rgbImg);
 	Mat smoothTextureMask = computeSmoothTextureMask(rgbImg, params.textureThresh);
 	Mat ndviMask = computeLowNDVIMask(bands, rgbImg.size(), (float)params.ndviThresh);
 
 	Mat candidateMask;
 	if (!ndviMask.empty()) {
-		// Primary route: Combine Low-NDVI with Non-Concrete and Texture filters
-		bitwise_and(nonConcreteMask, ndviMask, candidateMask);
+		// Primary route: Combine Low-NDVI with Color and Texture filters
+		if (useColorSpots) {
+			bitwise_and(colorMask, ndviMask, candidateMask);
+		} else {
+			bitwise_and(nonConcreteMask, ndviMask, candidateMask);
+		}
 		bitwise_and(candidateMask, smoothTextureMask, candidateMask);
 	} else {
-		// Fallback route (RGB only): Non-Concrete + Texture + Color
-		Mat rgbf; rgbImg.convertTo(rgbf, CV_32F);
-		vector<Mat> bgr; split(rgbf, bgr);
-		Mat PlantIndex = bgr[1] + bgr[2] - 2.0f * bgr[0]; // G + R - 2B
+		// Fallback route (RGB only): Color + Texture
+		if (useColorSpots) {
+			candidateMask = colorMask;
+		} else {
+			// Default green color segmentation: RGB PlantIndex + non-concrete
+			Mat rgbf; rgbImg.convertTo(rgbf, CV_32F);
+			vector<Mat> bgr; split(rgbf, bgr);
+			Mat PlantIndex = bgr[1] + bgr[2] - 2.0f * bgr[0]; // G + R - 2B
 
-		Mat PlantIndex_norm, PlantIndex8;
-		normalize(PlantIndex, PlantIndex_norm, 0.0f, 255.0f, NORM_MINMAX);
-		PlantIndex_norm.convertTo(PlantIndex8, CV_8U);
+			Mat PlantIndex_norm, PlantIndex8;
+			normalize(PlantIndex, PlantIndex_norm, 0.0f, 255.0f, NORM_MINMAX);
+			PlantIndex_norm.convertTo(PlantIndex8, CV_8U);
 
-		Mat rgbColorMask;
-		threshold(PlantIndex8, rgbColorMask, 0, 255, THRESH_BINARY | THRESH_OTSU);
+			Mat rgbColorMask;
+			threshold(PlantIndex8, rgbColorMask, 0, 255, THRESH_BINARY | THRESH_OTSU);
 
-		bitwise_and(nonConcreteMask, rgbColorMask, candidateMask);
+			bitwise_and(nonConcreteMask, rgbColorMask, candidateMask);
+		}
 		bitwise_and(candidateMask, smoothTextureMask, candidateMask);
 	}
 
@@ -1520,8 +1620,10 @@ GreenMaskResults applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const 
 		}
 
 		if (params.spectralKMeans) {
-			Mat refined = refineMaskWithKMeans(filteredMask, rgbImg, ndviImg);
-			if (!refined.empty()) filteredMask = refined;
+			Mat defaultMask = filteredMask.clone();
+			Mat region = refineMaskWithKMeansRegion(defaultMask, rgbImg, ndviImg);
+			if (!region.empty()) filteredMask = defaultMask & region;
+			else filteredMask = defaultMask;
 		}
 
 		if (params.spatialCluster) {

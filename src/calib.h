@@ -175,6 +175,13 @@ struct GreenMaskParams {
 	
 	int gentleOpenKernel = 3;        // light morphological kernel so tiny leaves survive
 	int gentleMinArea = 5;           // min contour area (px) to retain small leaf tips
+
+	// Color-spot HSV leaf selection: replaces the default green color filter.
+	struct ColorSpot { int h = 0; int s = 0; int v = 0; }; // HSV center (H 0-180)
+	std::vector<ColorSpot> colorSpots; // empty => default green filter preset
+	int hsvTolH = 15;                  // global hue tolerance (deg/2, H 0-180)
+	int hsvTolS = 40;                  // global saturation tolerance
+	int hsvTolV = 40;                  // global value tolerance
 };
 
 // Vegetation Indices
@@ -187,8 +194,9 @@ struct GreenMaskResults {
 	bool valid = false;
 };
 
-cv::Mat refineMaskWithKMeans(const cv::Mat& candidateMask, const cv::Mat& rgbImg, const cv::Mat& ndviImg);
+cv::Mat refineMaskWithKMeansRegion(const cv::Mat& candidateMask, const cv::Mat& rgbImg, const cv::Mat& ndviImg);
 cv::Mat filterSatelliteClusters(const cv::Mat& inputMask, double maxMergeDistancePx = 50.0);
+cv::Mat computeColorSpotMask(const cv::Mat& rgbImg, const GreenMaskParams& params);
 cv::Mat computeSoftNonConcreteMask(const cv::Mat& rgbImg);
 cv::Mat applyCentralAnchorEnclosure(const cv::Mat& candidateMask, double maxRadiusRatio = 0.38);
 cv::Mat calculateVegIndex(const std::string& type, const std::map<int, cv::Mat>& bands, const cv::Mat& mask = cv::Mat());
