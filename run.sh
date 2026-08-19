@@ -83,7 +83,7 @@ case "$1" in
         run_cmd env $LD_LINUX ./calib .input .output --optimize --green-centroid-radius 500,400 --radio 0,25
         ;;
     "example:calib-auto")
-        run_cmd env $LD_LINUX ./calib .input .output --optimize --green-centroid-radius 500,400 --radio --auto 2 --ref .input_ref/radiometric_reference.csv --template .input_ref/radiometric_board_03.png
+        run_cmd env $LD_LINUX ./calib .input .output --optimize --green-centroid-radius 500,400 --radio --auto 10 --ref .input_ref/radiometric_reference.csv --template .input_ref/radiometric_board_high_contrast.jpg
         ;;
     
     ###############################################################################################

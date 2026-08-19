@@ -23,7 +23,7 @@ using namespace cv;
 void showUsage() {
 	cout << "USAGE: ./calib <src_dir (default: .input/)> <dest_dir (default: .output/)> [--radio] [--auto] [--optimize] [--veg-idx=...]" << endl;
 	cout << "  --radio       Enable radiometric calibration." << endl;
-	cout << "  --auto        Auto-detect radiometric board (used with --radio). Optional: --auto <border_thickness>" << endl;
+	cout << "  --auto        Auto-detect radiometric board (used with --radio). Optional: --auto <border_thickness_pct> (default 10%% of min(width,height))" << endl;
 	cout << "  --template    Path to radiometric board template image (default: .input_ref/radiometric_board.jpg)" << endl;
 	cout << "  --ref         Path to radiometric reference CSV file (default: .input_ref/radiometric_reference.csv)" << endl;
 	cout << "  --optimize    Enable performance optimizations for ECC alignment." << endl;
@@ -35,10 +35,12 @@ void showUsage() {
 	cout << "                           cigreen, cire, ipvi, rdvi, wdrvi, wdvi, tsavi, atsavi, msr" << endl;
 	cout << "                Default: ndvi" << endl;
 	cout << "  --green-centroid-radius, -gcr  Radius px to focus green mask around image center; single value or \"w,h\" (default: 0 = disabled)" << endl;
-	cout << "  --kmeans      Refine big blobs via spectral K-Means (K=2) on [Hue, Saturation, NDVI]." << endl;
+	cout << "  --kmeans      Refine big blobs via spectral K-Means (K=2) on [Hue, Saturation, NDVI, Texture]." << endl;
 	cout << "  --spatial     Drop satellite moss blobs via spatial proximity clustering." << endl;
 	cout << "  --cluster     Enable both --kmeans and --spatial (recommended combined approach)." << endl;
 	cout << "  --spatial-merge-dist  Max centroid distance (px) to merge contours (default: 50)." << endl;
+	cout << "  --no-spectral-consistency  Disable the multi-blob spectral/texture consistency gate (default: enabled)." << endl;
+	cout << "  --spectral-gap-guard <r>   Relative score ratio (0-1) below which a spectrally-dissimilar blob is dropped (default: 0.85)." << endl;
 	cout << "  --gentle     Stressed-plant mode: soft background rejection + central anchor enclosure." << endl;
 	cout << "               Preserves yellow/brown/sparse/small leaves. Optional: --gentle-radius <frac>" << endl;
 	cout << "               (anchor radial enclosure as fraction of image width, default 0.38)." << endl;
@@ -102,7 +104,7 @@ int main(int argc, char** argv) {
 		
 		bool guiTwoPointClick = false;
 		bool guiAutoDetect = false;
-		int guiBoardThickness = 1;
+		int guiBoardThickness = 10;
 		string guiTemplatePath = radioTemplatePath;
 
 		gConfig.ecc.enabled = true; // Enabled by default in CLI
@@ -173,7 +175,7 @@ int main(int argc, char** argv) {
 					i++;
 				}
 			} else if (arg == "--auto") {
-				autoRadioThickness = 0;
+				autoRadioThickness = 10;
 				if (i + 1 < argc && isdigit(argv[i+1][0])) {
 					autoRadioThickness = stoi(argv[i+1]);
 					i++;
@@ -274,6 +276,10 @@ int main(int argc, char** argv) {
 				greenParams.spatialCluster = true;
 			} else if (arg == "--spatial-merge-dist") {
 				if (i + 1 < argc && argv[i+1][0] != '-') { greenParams.spatialMergeDist = atoi(argv[i+1]); i++; }
+			} else if (arg == "--no-spectral-consistency") {
+				greenParams.spectralConsistencyFilter = false;
+			} else if (arg == "--spectral-gap-guard") {
+				if (i + 1 < argc && argv[i+1][0] != '-') { greenParams.spectralGapGuard = atof(argv[i+1]); i++; }
 			} else if (arg == "--gentle") {
 				greenParams.gentleMode = true;
 			} else if (arg == "--gentle-radius") {

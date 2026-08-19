@@ -1,4 +1,5 @@
 #include "calib.h"
+#include <algorithm>
 #include <iomanip>
 #include <ctime>
 #include <regex>
@@ -19,6 +20,8 @@ using namespace std::filesystem;
 Logger gLog;
 Config gConfig;
 map<string, RadioRef> gRadioRefs;
+
+const int kDetectMaxDim = 1200;   // downscale cap for board detection speed
 
 // --- METADATA ---
 
@@ -374,6 +377,8 @@ RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point i
 	RadioState state;
 	Mat display;
 	RadioCoeffs coeffs;
+	Rect boardRect;
+	bool haveBoardRect = false;
 
 	if (img.depth() != CV_8U) {
 		double minVal, maxVal;
@@ -390,72 +395,178 @@ RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point i
 		Mat templ = imread(templatePath, IMREAD_COLOR);
 		if (!templ.empty()) {
 			cout << "  Auto-detecting board using template..." << endl;
-			double maxVal_total = -1;
-			Point maxLoc_total;
-			int bestRot = 0;
-			double bestScale = 1.0;
-			Size bestSize;
-
 			Mat grayDisplay;
 			cvtColor(display, grayDisplay, COLOR_BGR2GRAY);
 
-			vector<double> scales = {0.5, 0.75, 1.0, 1.25, 1.5};
-			for (double scale : scales) {
-				Mat scaledTempl;
-				resize(templ, scaledTempl, Size(), scale, scale);
+			bool detected = false;
 
-				for (int rot = 0; rot < 4; ++rot) {
-					Mat rotTempl;
-					if (rot == 0) rotTempl = scaledTempl;
-					else if (rot == 1) rotate(scaledTempl, rotTempl, ROTATE_90_CLOCKWISE);
-					else if (rot == 2) rotate(scaledTempl, rotTempl, ROTATE_180);
-					else if (rot == 3) rotate(scaledTempl, rotTempl, ROTATE_90_COUNTERCLOCKWISE);
+			// --- Homography (ORB) detection ---
+			{
+				double detScale = 1.0;
+				Mat detGray = grayDisplay;
+				int longest = max(grayDisplay.cols, grayDisplay.rows);
+				if (longest > kDetectMaxDim) {
+					detScale = (double)kDetectMaxDim / longest;
+					resize(grayDisplay, detGray, Size(), detScale, detScale, INTER_AREA);
+				}
 
-					if (rotTempl.cols > grayDisplay.cols || rotTempl.rows > grayDisplay.rows) continue;
+				Mat grayTempl;
+				cvtColor(templ, grayTempl, COLOR_BGR2GRAY);
+				int tmin = min(grayTempl.cols, grayTempl.rows);
+				if (tmin < 250) {
+					double upScale = 300.0 / tmin;
+					resize(grayTempl, grayTempl, Size(), upScale, upScale, INTER_CUBIC);
+				}
 
-					Mat grayTempl;
-					cvtColor(rotTempl, grayTempl, COLOR_BGR2GRAY);
+				Ptr<ORB> orb = ORB::create(2000, 1.2f, 8, 31, 0, 2, ORB::HARRIS_SCORE, 31, 5);
+				vector<KeyPoint> kpD, kpT;
+				Mat descD, descT;
+				orb->detectAndCompute(detGray, noArray(), kpD, descD);
+				orb->detectAndCompute(grayTempl, noArray(), kpT, descT);
 
-					Mat result;
-					matchTemplate(grayDisplay, grayTempl, result, TM_CCOEFF_NORMED);
-					double minVal, maxVal;
-					Point minLoc, maxLoc;
-					minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc);
+				if (!descD.empty() && !descT.empty()) {
+					BFMatcher matcher(NORM_HAMMING);
+					vector<vector<DMatch>> knn;
+					matcher.knnMatch(descT, descD, knn, 2);
+					vector<DMatch> good;
+					for (auto& m : knn) {
+						if (m.size() >= 2 && m[0].distance < 0.85 * m[1].distance)
+							good.push_back(m[0]);
+					}
 
-					if (maxVal > maxVal_total) {
-						maxVal_total = maxVal;
-						maxLoc_total = maxLoc;
-						bestRot = rot;
-						bestScale = scale;
-						bestSize = rotTempl.size();
+					if (good.size() >= 4) {
+						vector<Point2f> obj, scene;
+						for (auto& m : good) {
+							obj.push_back(kpT[m.queryIdx].pt);
+							scene.push_back(kpD[m.trainIdx].pt);
+						}
+						vector<uchar> inliersMask;
+						Mat affine = estimateAffinePartial2D(obj, scene, inliersMask, RANSAC, 3.0);
+						if (!affine.empty()) {
+							Mat H = Mat::eye(3, 3, CV_64F);
+							affine.convertTo(H(Rect(0, 0, 3, 2)), CV_64F);
+							double s = hypot(H.at<double>(0,0), H.at<double>(1,0));
+							bool scaleOk = s > 0.2 && s < 2.5;
+							int inliers = countNonZero(inliersMask);
+							if (inliers >= 8 && scaleOk) {
+								vector<Point2f> corners = {
+									Point2f(0, 0), Point2f((float)grayTempl.cols, 0),
+									Point2f((float)grayTempl.cols, (float)grayTempl.rows), Point2f(0, (float)grayTempl.rows)};
+								perspectiveTransform(corners, corners, H);
+								Rect r;
+								for (auto& p : corners) {
+									Point ip(cvRound(p.x / detScale), cvRound(p.y / detScale));
+									if (r.width == 0) { r = Rect(ip.x, ip.y, 1, 1); continue; }
+									if (ip.x < r.x) { r.width += r.x - ip.x; r.x = ip.x; }
+									if (ip.y < r.y) { r.height += r.y - ip.y; r.y = ip.y; }
+									if (ip.x > r.x + r.width - 1) r.width = ip.x - r.x + 1;
+									if (ip.y > r.y + r.height - 1) r.height = ip.y - r.y + 1;
+								}
+								boardRect = r;
+								haveBoardRect = true;
+
+								int tw = grayTempl.cols, th = grayTempl.rows;
+								double T = autoDetectThickness * min(tw, th) / 100.0;
+								double IW = tw - 2 * T;
+								double IH = th - 2 * T;
+								vector<Point2f> pts = {
+									Point2f(tw / 2.0, T + IH / 8),
+									Point2f(tw / 2.0, T + IH * 7 / 8)};
+								perspectiveTransform(pts, pts, H);
+								state.p56 = Point(cvRound(pts[0].x / detScale), cvRound(pts[0].y / detScale));
+								state.p3 = Point(cvRound(pts[1].x / detScale), cvRound(pts[1].y / detScale));
+								state.clicks = 2;
+								detected = true;
+								cout << "    Board detected via homography!" << endl;
+							}
+						}
 					}
 				}
 			}
 
-			if (maxVal_total > 0.7) {
-				cout << "    Board detected! (score=" << maxVal_total << ", rot=" << bestRot*90 << "deg, scale=" << bestScale << ")" << endl;
-				Point p56_rel, p3_rel;
-				double T = autoDetectThickness;
-				double IW = bestSize.width - 2 * T;
-				double IH = bestSize.height - 2 * T;
+			// --- Fallback: scale/rotation matchTemplate grid (coarse-to-fine, 2deg) ---
+			if (!detected) {
+				Mat grayTemplNative;
+				cvtColor(templ, grayTemplNative, COLOR_BGR2GRAY);
+				int tw = grayTemplNative.cols, th = grayTemplNative.rows;
 
-				if (bestRot == 0) {
-					p56_rel = Point(bestSize.width / 2, T + IH / 8);
-					p3_rel = Point(bestSize.width / 2, T + IH * 7 / 8);
-				} else if (bestRot == 1) {
-					p56_rel = Point(T + IW * 7 / 8, bestSize.height / 2);
-					p3_rel = Point(T + IW / 8, bestSize.height / 2);
-				} else if (bestRot == 2) {
-					p56_rel = Point(bestSize.width / 2, T + IH * 7 / 8);
-					p3_rel = Point(bestSize.width / 2, T + IH / 8);
-				} else if (bestRot == 3) {
-					p56_rel = Point(T + IW / 8, bestSize.height / 2);
-					p3_rel = Point(T + IW * 7 / 8, bestSize.height / 2);
+				double detScale = 1.0;
+				Mat detGray = grayDisplay;
+				int longest = max(grayDisplay.cols, grayDisplay.rows);
+				if (longest > kDetectMaxDim) {
+					detScale = (double)kDetectMaxDim / longest;
+					resize(grayDisplay, detGray, Size(), detScale, detScale, INTER_AREA);
 				}
 
-				state.p56 = maxLoc_total + p56_rel;
-				state.p3 = maxLoc_total + p3_rel;
-				state.clicks = 2;
+				auto makeRot = [&](double angle, double scale, Mat& outRot, Mat& outM) {
+					double rad = angle * CV_PI / 180.0;
+					int cw = cvRound(fabs(tw * scale * cos(rad)) + fabs(th * scale * sin(rad)));
+					int ch = cvRound(fabs(tw * scale * sin(rad)) + fabs(th * scale * cos(rad)));
+					outM = getRotationMatrix2D(Point2f(tw / 2.0, th / 2.0), angle, scale);
+					outM.at<double>(0, 2) += cw / 2.0 - tw / 2.0;
+					outM.at<double>(1, 2) += ch / 2.0 - th / 2.0;
+					warpAffine(grayTemplNative, outRot, outM, Size(cw, ch), INTER_LINEAR, BORDER_CONSTANT, Scalar(0));
+				};
+
+				vector<double> scales = {0.5, 0.75, 1.0, 1.25, 1.5};
+				double maxVal_total = -1;
+				Point maxLoc_total;
+				double bestScale = 1.0, bestAngle = 0.0;
+				Mat bestM;
+
+				auto runMatch = [&](double angle, double scale) {
+					Mat rot, M;
+					makeRot(angle, scale, rot, M);
+					if (rot.cols > detGray.cols || rot.rows > detGray.rows) return;
+					Mat result;
+					matchTemplate(detGray, rot, result, TM_CCOEFF_NORMED);
+					double mn, mx; Point mnL, mxL;
+					minMaxLoc(result, &mn, &mx, &mnL, &mxL);
+					if (mx > maxVal_total) {
+						maxVal_total = mx; maxLoc_total = mxL;
+						bestScale = scale; bestAngle = angle; bestM = M;
+					}
+				};
+
+				// coarse: scales x 4x90deg quadrant
+				for (double scale : scales)
+					for (int k = 0; k < 4; ++k) runMatch(k * 90.0, scale);
+				// fine: 2deg steps within +-45deg of the best quadrant at best scale
+				double baseAngle = bestAngle;
+				if (maxVal_total > 0) {
+					for (double a = baseAngle - 45.0; a <= baseAngle + 45.0 + 1e-6; a += 2.0)
+						runMatch(a, bestScale);
+				}
+
+				if (maxVal_total > 0.7) {
+					cout << "    Board detected! (score=" << maxVal_total << ", rot=" << bestAngle << "deg, scale=" << bestScale << ")" << endl;
+					auto applyM = [&](const Point2f& p)->Point2f {
+						return Point2f(bestM.at<double>(0,0)*p.x + bestM.at<double>(0,1)*p.y + bestM.at<double>(0,2),
+									   bestM.at<double>(1,0)*p.x + bestM.at<double>(1,1)*p.y + bestM.at<double>(1,2));
+					};
+					double T = autoDetectThickness * min(tw, th) / 100.0;
+					double IH = th - 2 * T;
+					vector<Point2f> pc = {
+						applyM(Point2f(tw / 2.0, T + IH / 8)),
+						applyM(Point2f(tw / 2.0, T + IH * 7 / 8))};
+					state.p56 = Point(cvRound((maxLoc_total.x + pc[0].x) / detScale), cvRound((maxLoc_total.y + pc[0].y) / detScale));
+					state.p3  = Point(cvRound((maxLoc_total.x + pc[1].x) / detScale), cvRound((maxLoc_total.y + pc[1].y) / detScale));
+					state.clicks = 2;
+
+					vector<Point2f> corners = {applyM(Point2f(0, 0)), applyM(Point2f((float)tw, 0)),
+											   applyM(Point2f((float)tw, (float)th)), applyM(Point2f(0, (float)th))};
+					Rect r;
+					for (auto& p : corners) {
+						Point ip(cvRound((maxLoc_total.x + p.x) / detScale), cvRound((maxLoc_total.y + p.y) / detScale));
+						if (r.width == 0) { r = Rect(ip.x, ip.y, 1, 1); continue; }
+						if (ip.x < r.x) { r.width += r.x - ip.x; r.x = ip.x; }
+						if (ip.y < r.y) { r.height += r.y - ip.y; r.y = ip.y; }
+						if (ip.x > r.x + r.width - 1) r.width = ip.x - r.x + 1;
+						if (ip.y > r.y + r.height - 1) r.height = ip.y - r.y + 1;
+					}
+					boardRect = r;
+					haveBoardRect = true;
+				}
 			}
 		}
 	}
@@ -549,6 +660,7 @@ RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point i
 
 	if (autoDetectThickness >= 0) {
 		if (!exists(radioDir)) create_directories(radioDir);
+		if (haveBoardRect) rectangle(display, boardRect, Scalar(0, 255, 255), 2);
 		imwrite(radioDir + "/" + filename + "_board_preview.jpg", display);
 	}
 
@@ -577,6 +689,8 @@ RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point i
 RadioCoeffs getRadiometricCoeffsByEdge(const Mat& img, const string& filename, Point interval, int autoDetectThickness,
 								  const string& radioDir, const string& templatePath) {
 	RadioState state;
+	Rect boardRect;
+	bool haveBoardRect = false;
 	Mat display;
 	RadioCoeffs coeffs;
 
@@ -677,7 +791,7 @@ RadioCoeffs getRadiometricCoeffsByEdge(const Mat& img, const string& filename, P
 				Point p56_rel, p3_rel;
                 
                 // CRITICAL FIX: The thickness of the border scales with the template!
-				double T = autoDetectThickness * bestScale; 
+				double T = autoDetectThickness * min(bestSize.width, bestSize.height) / 100.0;
 				double IW = bestSize.width - 2 * T;
 				double IH = bestSize.height - 2 * T;
 
@@ -700,6 +814,8 @@ RadioCoeffs getRadiometricCoeffsByEdge(const Mat& img, const string& filename, P
 				state.p56 = maxLoc_total + p56_rel;
 				state.p3 = maxLoc_total + p3_rel;
 				state.clicks = 2;
+				boardRect = Rect(maxLoc_total, bestSize);
+				haveBoardRect = true;
 			} else {
                 cout << "    Failed to detect board (highest score: " << maxVal_total << ")" << endl;
             }
@@ -797,6 +913,7 @@ RadioCoeffs getRadiometricCoeffsByEdge(const Mat& img, const string& filename, P
 
 	if (autoDetectThickness >= 0) {
 		if (!exists(radioDir)) create_directories(radioDir);
+		if (haveBoardRect) rectangle(display, boardRect, Scalar(0, 255, 255), 2);
 		imwrite(radioDir + "/" + filename + "_board_preview.jpg", display);
 	}
 
@@ -1193,7 +1310,7 @@ Mat applyCentralAnchorEnclosure(const Mat& candidateMask, double maxRadiusRatio)
 // ============================================================================
 // HELPER 2: Texture / High-Frequency Variance Filtering
 // ============================================================================
-static Mat computeSmoothTextureMask(const Mat& rgbImg, double maxTextureThresh = 32.0) {
+static Mat computeTextureEnergyMap(const Mat& rgbImg) {
 	Mat gray, lap, absLap, localTexture;
 	cvtColor(rgbImg, gray, COLOR_BGR2GRAY);
 
@@ -1203,7 +1320,11 @@ static Mat computeSmoothTextureMask(const Mat& rgbImg, double maxTextureThresh =
 
 	// Blur to compute local gradient density (moss/concrete = high gradient variance)
 	blur(absLap, localTexture, Size(7, 7));
+	return localTexture;
+}
 
+static Mat computeSmoothTextureMask(const Mat& rgbImg, double maxTextureThresh = 32.0) {
+	Mat localTexture = computeTextureEnergyMap(rgbImg);
 	Mat smoothMask;
 	// Keep pixels with low local gradient variance (smooth leaf surfaces)
 	threshold(localTexture, smoothMask, maxTextureThresh, 255, THRESH_BINARY_INV);
@@ -1245,10 +1366,40 @@ static Mat computeLowNDVIMask(const map<int, Mat>& bands, Size targetSize, float
 	return Mat();
 }
 
+// True spatial adjacency: are any points of A within maxGapPx of any point of B?
+// Replaces bounding-box overlap, which is a poor proxy for "same object" -- two
+// large, disjoint blobs' axis-aligned bboxes often overlap by pure coincidence
+// even when the blobs themselves are far apart and never touch.
+static bool regionsAreAdjacent(const vector<Point>& ptsA, const vector<Point>& ptsB, Size imgSize, double maxGapPx) {
+	if (ptsA.empty() || ptsB.empty()) return false;
+	int pad = (int)std::ceil(maxGapPx);
+	Rect roi = boundingRect(ptsA) | boundingRect(ptsB);
+	roi.x -= pad; roi.y -= pad; roi.width += 2 * pad; roi.height += 2 * pad;
+	roi &= Rect(0, 0, imgSize.width, imgSize.height);
+	if (roi.empty()) return false;
+
+	Mat maskA = Mat::zeros(roi.size(), CV_8U), maskB = Mat::zeros(roi.size(), CV_8U);
+	for (const auto& p : ptsA) {
+		Point q = p - roi.tl();
+		if (q.x >= 0 && q.y >= 0 && q.x < roi.width && q.y < roi.height) maskA.at<uchar>(q) = 255;
+	}
+	for (const auto& p : ptsB) {
+		Point q = p - roi.tl();
+		if (q.x >= 0 && q.y >= 0 && q.x < roi.width && q.y < roi.height) maskB.at<uchar>(q) = 255;
+	}
+
+	Mat kernel = getStructuringElement(MORPH_ELLIPSE, Size(2 * pad + 1, 2 * pad + 1));
+	dilate(maskA, maskA, kernel);
+	Mat overlap;
+	bitwise_and(maskA, maskB, overlap);
+	return countNonZero(overlap) > 0;
+}
+
 // Build a REGION mask (0/255) from the spectral K-Means plant cluster: the
 // convex hull of the plant pixels, expanded 1.2x about the plant centroid.
 // Returns an empty Mat when there is nothing to refine (caller keeps default).
-Mat refineMaskWithKMeansRegion(const Mat& candidateMask, const Mat& rgbImg, const Mat& ndviImg) {
+Mat refineMaskWithKMeansRegion(const Mat& candidateMask, const Mat& rgbImg, const Mat& ndviImg,
+                                double adjacencyGapPx, double spectralGapGuard) {
 	const double eps = 1e-6;
 	vector<Point> candPoints;
 	findNonZero(candidateMask, candPoints);
@@ -1258,18 +1409,20 @@ Mat refineMaskWithKMeansRegion(const Mat& candidateMask, const Mat& rgbImg, cons
 
 	Mat hsv;
 	cvtColor(rgbImg, hsv, COLOR_BGR2HSV);
+	Mat textureEnergy = computeTextureEnergyMap(rgbImg);
 
-	// Feature matrix: N rows x 3 cols [Normalized_Hue, Saturation, NDVI]
-	Mat samples((int)candPoints.size(), 3, CV_32F);
+	// Feature matrix: N rows x 4 cols [Normalized_Hue, Saturation, NDVI, Texture]
+	Mat samples((int)candPoints.size(), 4, CV_32F);
 	for (size_t i = 0; i < candPoints.size(); ++i) {
 		const Point& pt = candPoints[i];
 		Vec3b hsvPixel = hsv.at<Vec3b>(pt);
 		double ndviVal = 0.0;
 		if (!ndviImg.empty() && ndviImg.type() == CV_32F) ndviVal = ndviImg.at<float>(pt);
 
-		samples.at<float>((int)i, 0) = hsvPixel[0] / 180.0f;          // Hue
-		samples.at<float>((int)i, 1) = hsvPixel[1] / 255.0f;          // Saturation
-		samples.at<float>((int)i, 2) = (float)std::max(0.0, ndviVal); // NDVI
+		samples.at<float>((int)i, 0) = hsvPixel[0] / 180.0f;                    // Hue
+		samples.at<float>((int)i, 1) = hsvPixel[1] / 255.0f;                    // Saturation
+		samples.at<float>((int)i, 2) = (float)std::max(0.0, ndviVal);           // NDVI
+		samples.at<float>((int)i, 3) = textureEnergy.at<uchar>(pt) / 128.0f;    // Texture roughness
 	}
 
 	// K-Means with K = 2
@@ -1278,19 +1431,20 @@ Mat refineMaskWithKMeansRegion(const Mat& candidateMask, const Mat& rgbImg, cons
 	TermCriteria criteria(TermCriteria::EPS + TermCriteria::COUNT, 10, 1.0);
 	kmeans(samples, K, labels, criteria, 3, KMEANS_PP_CENTERS, centers);
 
-	// Plant cluster = higher combined (Saturation + NDVI) score
-	const float score0 = centers.at<float>(0, 1) + centers.at<float>(0, 2);
-	const float score1 = centers.at<float>(1, 1) + centers.at<float>(1, 2);
+	// Plant cluster = higher combined (Saturation + NDVI - Texture) score:
+	// smoother, more saturated, more photosynthetic pixels are more leaf-like.
+	const float score0 = centers.at<float>(0, 1) + centers.at<float>(0, 2) - centers.at<float>(0, 3);
+	const float score1 = centers.at<float>(1, 1) + centers.at<float>(1, 2) - centers.at<float>(1, 3);
 	const int plantClusterIdx = (score1 > score0) ? 1 : 0;
 	const int mossClusterIdx = 1 - plantClusterIdx;
 
 	// Conservatively keep the whole mask unless the "moss" cluster is CLEARLY
-	// inferior. If the two clusters are close in (Saturation+NDVI) they are both
-	// legit canopy foliage and pruning would amputate healthy leaves.
+	// inferior. If the two clusters are close in score they are both legit
+	// canopy foliage and pruning would amputate healthy leaves.
 	const float scorePlant = std::max(score0, score1);
 	const float scoreMoss = std::min(score0, score1);
 	// Require a sizeable spectral gap so we never split one plant into two halves.
-	if (scoreMoss > 0.85f * scorePlant) {
+	if (scoreMoss > (float)spectralGapGuard * scorePlant) {
 		return Mat();
 	}
 
@@ -1304,13 +1458,14 @@ Mat refineMaskWithKMeansRegion(const Mat& candidateMask, const Mat& rgbImg, cons
 	}
 	if (plantPts.empty()) return Mat();
 
-	// Spatial contiguity safeguard: if the two clusters' bounding boxes overlap
-	// they are really one canopy split by K-Means, so build the hull over BOTH
-	// clusters (nothing gets amputated). Only when moss is spatially disjoint do
-	// we treat it as genuine background and hull the plant cluster alone.
-	Rect rPlant = boundingRect(plantPts);
-	Rect rMoss = mossPts.empty() ? Rect() : boundingRect(mossPts);
-	bool contiguous = !mossPts.empty() && ((rPlant & rMoss).area() > 0);
+	// Spatial contiguity safeguard: if the two clusters are actually touching
+	// (true pixel adjacency, not just overlapping bounding boxes -- two large
+	// disjoint blobs' bboxes overlap by coincidence far more often than the
+	// blobs themselves touch), they are really one canopy split by K-Means, so
+	// build the hull over BOTH clusters (nothing gets amputated). Only when
+	// moss is spatially disjoint do we treat it as genuine background and hull
+	// the plant cluster alone.
+	bool contiguous = !mossPts.empty() && regionsAreAdjacent(plantPts, mossPts, candidateMask.size(), adjacencyGapPx);
 
 	vector<Point> hullPts = plantPts;
 	if (mossPts.empty()) {
@@ -1520,6 +1675,24 @@ GreenMaskResults applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const 
 	}
 
 	// ------------------------------------------------------------------------
+	// STEP 1c: Float NDVI image (shared by STEP 3c consistency gate & STEP 3b K-Means)
+	// ------------------------------------------------------------------------
+	Mat ndviImg;
+	{
+		const float eps = 1e-6f;
+		if (bands.count(5) && (bands.count(3) || bands.count(2))) {
+			Mat NIR = bands.at(5).clone(), red = bands.count(3) ? bands.at(3).clone() : bands.at(2).clone();
+			if (NIR.channels() == 1 && red.channels() == 1) {
+				resize(NIR, NIR, rgbImg.size());
+				resize(red, red, rgbImg.size());
+				Mat NIRf, redf;
+				NIR.convertTo(NIRf, CV_32F); red.convertTo(redf, CV_32F);
+				ndviImg = (NIRf - redf) / (NIRf + redf + eps);
+			}
+		}
+	}
+
+	// ------------------------------------------------------------------------
 	// STEP 1b: ROI Mask From Green Centroid Radius (drop border noise/out-of-focus)
 	// ------------------------------------------------------------------------
 	if (params.centroidRadiusX > 0 && params.centroidRadiusY > 0) {
@@ -1582,46 +1755,76 @@ GreenMaskResults applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const 
 			if (solidity >= params.solidityThresh) {
 				Moments mu = moments(contours[i]);
 				Point2f centroid(mu.m10 / (mu.m00 + 1e-6), mu.m01 / (mu.m00 + 1e-6));
-
 				validContours.push_back({i, area, solidity, centroid});
-
-				// Draw valid plant contour to final mask
-				drawContours(filteredMask, contours, i, Scalar(255), FILLED);
-
-				totalValidArea += area;
-				weightedCentroid += centroid * (float)area;
-
-				for (const auto& p : contours[i]) {
-					allPlantPoints.push_back(p);
-				}
 			}
 		}
+	}
+
+	// ------------------------------------------------------------------------
+	// STEP 3c: Multi-Blob Spectral/Textural Consistency Filter.
+	// Solidity/area alone cannot distinguish a consolidated moss patch from a
+	// real round canopy -- both are solid, roughly-circular blobs. When area+
+	// solidity leave MORE THAN ONE surviving contour, score each by leaf-
+	// likeness (saturation + NDVI - texture-roughness) and drop any contour
+	// that is BOTH spectrally dissimilar from the best-scoring contour AND
+	// spatially non-adjacent to it. No-op when <=1 contour survives (the
+	// common, already-correct case).
+	// ------------------------------------------------------------------------
+	vector<int> keepIdx;
+	if (params.spectralConsistencyFilter && validContours.size() > 1) {
+		Mat hsv;
+		cvtColor(rgbImg, hsv, COLOR_BGR2HSV);
+		vector<Mat> hsvCh;
+		split(hsv, hsvCh);
+		Mat textureEnergy = computeTextureEnergyMap(rgbImg);
+
+		vector<float> score(validContours.size(), 0.0f);
+		vector<vector<Point>> ptsByContour(validContours.size());
+		for (size_t k = 0; k < validContours.size(); ++k) {
+			int ci = validContours[k].index;
+			Mat cMask = Mat::zeros(candidateMask.size(), CV_8U);
+			drawContours(cMask, contours, ci, Scalar(255), FILLED);
+			findNonZero(cMask, ptsByContour[k]);
+			double meanS = mean(hsvCh[1], cMask)[0] / 255.0;
+			double meanNdvi = ndviImg.empty() ? 0.0 : std::max(0.0, mean(ndviImg, cMask)[0]);
+			double meanTex = mean(textureEnergy, cMask)[0] / 64.0;
+			score[k] = (float)(meanS + meanNdvi - meanTex);
+		}
+
+		size_t anchor = (size_t)(max_element(score.begin(), score.end()) - score.begin());
+		for (size_t k = 0; k < validContours.size(); ++k) {
+			bool keep = (k == anchor)
+			         || (score[k] >= (float)params.spectralGapGuard * score[anchor])
+			         || regionsAreAdjacent(ptsByContour[k], ptsByContour[anchor], candidateMask.size(), (double)params.spatialMergeDist);
+			if (keep) keepIdx.push_back(validContours[k].index);
+		}
+	} else {
+		for (const auto& vc : validContours) keepIdx.push_back(vc.index);
+	}
+
+	for (int ci : keepIdx) {
+		double area = contourArea(contours[ci]);
+		Moments mu = moments(contours[ci]);
+		Point2f centroid(mu.m10 / (mu.m00 + 1e-6), mu.m01 / (mu.m00 + 1e-6));
+
+		drawContours(filteredMask, contours, ci, Scalar(255), FILLED);
+		totalValidArea += area;
+		weightedCentroid += centroid * (float)area;
+		for (const auto& p : contours[ci]) allPlantPoints.push_back(p);
 	}
 
 	// ------------------------------------------------------------------------
 	// STEP 3b: Clustering Refinement (K-Means then Spatial) on valid contours
 	// ------------------------------------------------------------------------
 	// Spectral K-Means first: splits spectrally-similar big moss blobs from the
-	// true canopy using [Hue, Saturation, NDVI]; then Spatial clustering drops any
-	// remaining satellite blobs physically detached from the primary cluster.
+	// true canopy using [Hue, Saturation, NDVI, Texture]; then Spatial clustering
+	// drops any remaining satellite blobs physically detached from the primary
+	// cluster. ndviImg was hoisted to STEP 1c above and is reused here.
 	if ((params.spectralKMeans || params.spatialCluster) && totalValidArea > 0) {
-		// Build float NDVI image once, reuse for the spectral classifier
-		Mat ndviImg;
-		const float eps = 1e-6f;
-		if (bands.count(5) && (bands.count(3) || bands.count(2))) {
-			Mat NIR = bands.at(5).clone(), red = bands.count(3) ? bands.at(3).clone() : bands.at(2).clone();
-			if (NIR.channels() == 1 && red.channels() == 1) {
-				resize(NIR, NIR, filteredMask.size());
-				resize(red, red, filteredMask.size());
-				Mat NIRf, redf;
-				NIR.convertTo(NIRf, CV_32F); red.convertTo(redf, CV_32F);
-				ndviImg = (NIRf - redf) / (NIRf + redf + eps);
-			}
-		}
-
 		if (params.spectralKMeans) {
 			Mat defaultMask = filteredMask.clone();
-			Mat region = refineMaskWithKMeansRegion(defaultMask, rgbImg, ndviImg);
+			Mat region = refineMaskWithKMeansRegion(defaultMask, rgbImg, ndviImg,
+			                                         (double)params.spatialMergeDist, params.spectralGapGuard);
 			if (!region.empty()) filteredMask = defaultMask & region;
 			else filteredMask = defaultMask;
 		}

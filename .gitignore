@@ -48,3 +48,5 @@ output.png
 /window_build/.output
 /runtime/settings
 /.test_output
+/.output - Copy
+/.input.zip

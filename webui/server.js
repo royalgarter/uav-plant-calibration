@@ -154,6 +154,8 @@ function executeCalibration(config, res) {
 		spectralKMeans: false,
 		spatialCluster: false,
 		spatialMergeDist: 50,
+		spectralConsistencyFilter: true,
+		spectralGapGuard: 0.85,
 		gentleMode: false,
 		gentleRadius: 0.38,
 		...preprocess
@@ -208,6 +210,8 @@ function executeCalibration(config, res) {
 	if (pre.spectralKMeans) args.push('--kmeans');
 	if (pre.spatialCluster) args.push('--spatial');
 	if (pre.spatialMergeDist !== 50) args.push('--spatial-merge-dist', String(pre.spatialMergeDist));
+	if (pre.spectralConsistencyFilter === false) args.push('--no-spectral-consistency');
+	if (pre.spectralGapGuard !== 0.85) args.push('--spectral-gap-guard', String(pre.spectralGapGuard));
 	if (pre.gentleMode) args.push('--gentle');
 	if (pre.gentleRadius !== 0.38) args.push('--gentle-radius', String(pre.gentleRadius));
 

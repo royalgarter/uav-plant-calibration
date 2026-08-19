@@ -162,9 +162,12 @@ struct GreenMaskParams {
 	int openKernelSize = 7;         // morphological opening kernel size
 	int closeKernelSize = 5;        // morphological closing kernel size
 	
-	bool spectralKMeans = false;    // refine big blobs via [H,S,NDVI] K-Means (K=2)
+	bool spectralKMeans = false;    // refine big blobs via [H,S,NDVI,Texture] K-Means (K=2)
 	bool spatialCluster = false;    // drop satellite moss blobs via spatial proximity grouping
 	int spatialMergeDist = 50;      // max centroid distance (px) to merge contours into one cluster
+
+	bool spectralConsistencyFilter = true; // multi-blob spectral/texture consistency gate (STEP 3c); no-op unless >1 contour survives
+	double spectralGapGuard = 0.85;        // relative score floor below which a spectrally-dissimilar blob is dropped (shared with K-Means gate)
 
 	// Gentle (stressed-plant) mode: preserves yellow/brown/sparse/small leaves
 	bool gentleMode = false;        // use soft background rejection + central anchor enclosure
@@ -194,7 +197,8 @@ struct GreenMaskResults {
 	bool valid = false;
 };
 
-cv::Mat refineMaskWithKMeansRegion(const cv::Mat& candidateMask, const cv::Mat& rgbImg, const cv::Mat& ndviImg);
+cv::Mat refineMaskWithKMeansRegion(const cv::Mat& candidateMask, const cv::Mat& rgbImg, const cv::Mat& ndviImg,
+                                    double adjacencyGapPx = 50.0, double spectralGapGuard = 0.85);
 cv::Mat filterSatelliteClusters(const cv::Mat& inputMask, double maxMergeDistancePx = 50.0);
 cv::Mat computeColorSpotMask(const cv::Mat& rgbImg, const GreenMaskParams& params);
 cv::Mat computeSoftNonConcreteMask(const cv::Mat& rgbImg);

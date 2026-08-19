@@ -49,7 +49,7 @@ string g_inputFolder, g_outputFolder, g_radioRefFile, g_radioTemplatePath;
 bool g_enableRadio = false;
 bool g_twoPointClickMode = false;
 bool g_autoDetectBoard = false;
-int g_boardThickness = 0;
+int g_boardThickness = 10;
 
 // Background brush for consistent gray color
 HBRUSH g_hBackgroundBrush = nullptr;
