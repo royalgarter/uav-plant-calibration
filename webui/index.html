@@ -23,7 +23,7 @@
 			height: 15px;
 			align-items: center;
 			justify-content: center;
-			margin-left: 4px;
+			margin-right: 4px;
 			border-radius: 9999px;
 			background: #e5e7eb;
 			color: #4b5563;
@@ -148,7 +148,7 @@
 								<button @click="$refs.radioTemplatePicker.click()" type="button" class="cursor-pointer h-8 ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Select File">
 									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
 								</button>
-								<input type="file" x-ref="radioTemplatePicker" accept=".jpg,.jpeg,.png" class="hidden" @change="console.dir($event.target.files?.[0]);if($event.target.files.length) {config.radioTemplatePath = $event.target.files[0].name; $event.target.value = '';}">
+								<input type="file" x-ref="radioTemplatePicker" accept=".jpg,.jpeg,.png" class="hidden" @change="if($event.target.files.length) {config.radioTemplatePath = config.refDir + $event.target.files[0].name; $event.target.value = '';}">
 							</div>
 							<div class="flex items-center justify-end" x-show="config.doRadio">
 								<button @click="openTemplatePicker()" type="button" class="cursor-pointer h-8 ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Manually crop a board template from an input image">
@@ -167,7 +167,7 @@
 								<button @click="$refs.radioRefPicker.click()" type="button" class="cursor-pointer h-8 ml-1 px-2 py-1 bg-gray-100 border hover:bg-gray-200 text-xs flex items-center" title="Select File">
 									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
 								</button>
-								<input type="file" x-ref="radioRefPicker" accept=".csv" class="hidden" @change="console.dir($event.target.files?.[0]);if($event.target.files.length) {config.radioRefFile = $event.target.files[0].name; $event.target.value = '';}">
+								<input type="file" x-ref="radioRefPicker" accept=".csv" class="hidden" @change="if($event.target.files.length) {config.radioRefFile = config.refDir + $event.target.files[0].name; $event.target.value = '';}">
 							</div>
 						</div>
 
@@ -178,9 +178,7 @@
 						</div>
 						<div class="grid grid-cols-2 gap-2 text-xs" x-show="showPreprocess">
 							<div class="flex items-center col-span-2 justify-between">
-								<label class="block text-gray-700 w-36 text-xs">Green centroid radius
-									<span class="help-tip">?<span class="help-text"><span class="help-title">Green Centroid Radius (px)</span>Crops the analysis to an ellipse (center + radii), removing border/edge noise and out-of-focus plants outside the focused plant.<span class="help-hint">Hint: Format "centerX,centerY,radiusX,radiusY" (e.g. 2700,1800,200,300). "radiusX,radiusY" = center at image center. Single "r" = both radii. 0 = disabled. Use the "Pick ROI" button to draw the region visually.</span></span></span>
-								</label>
+								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Green Centroid Radius (px)</span>Crops the analysis to an ellipse (center + radii), removing border/edge noise and out-of-focus plants outside the focused plant.<span class="help-hint">Hint: Format "centerX,centerY,radiusX,radiusY" (e.g. 2700,1800,200,300). "radiusX,radiusY" = center at image center. Single "r" = both radii. 0 = disabled. Use the "Pick ROI" button to draw the region visually.</span></span></span> Green centroid radius</label>
 								<div class="flex items-center">
 									<input type="text" x-model="config.greenCentroidRadius" class="block p-2 border text-xs w-28">
 									<button @click="resetRoi()" type="button" class="cursor-pointer h-8 ml-1 px-2 py-1 bg-gray-500 hover:bg-gray-600 disabled:bg-gray-300 text-white text-xs flex items-center" title="Reset to default ROI">
@@ -193,9 +191,7 @@
 								</div>
 							</div>
 							<div class="flex items-center col-span-2 justify-between">
-								<label class="block text-gray-700 w-36 text-xs">Color leaf spots
-									<span class="help-tip">?<span class="help-text"><span class="help-title">Color Leaf Spots</span>Pick colors directly from an RGB image. Each left-click on the image captures a leaf color; every spot is expanded by a single global HSV tolerance into a mask that replaces the default green filter.<span class="help-hint">Hint: Click "Pick Color Leaves" to open the image, then left-click on leaf areas to add spots. Use the "x" on a pad to remove it. Adjust the H/S/V tolerance (hue uses OpenCV 0-180) to widen/narrow the range. "Reset" clears all spots back to the default green filter.</span></span></span>
-								</label>
+								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Color Leaf Spots</span>Pick colors directly from an RGB image. Each left-click on the image captures a leaf color; every spot is expanded by a single global HSV tolerance into a mask that replaces the default green filter.<span class="help-hint">Hint: Click "Pick Color Leaves" to open the image, then left-click on leaf areas to add spots. Use the "x" on a pad to remove it. Adjust the H/S/V tolerance (hue uses OpenCV 0-180) to widen/narrow the range. "Reset" clears all spots back to the default green filter.</span></span></span> Color leaf spots</label>
 								<div class="flex items-center">
 									<button @click="resetColorSpots()" type="button" :disabled="!config.colorSpots.length" class="cursor-pointer h-8 ml-1 px-2 py-1 bg-gray-500 hover:bg-gray-600 disabled:bg-gray-300 text-white text-xs flex items-center" title="Clear all color spots (back to default green filter)">
 										Reset
@@ -234,101 +230,73 @@
 								<label class="block text-gray-700 w-36 text-xs uppercase tracking-wide">Thresholds</label>
 							</div>
 							<div class="flex items-center">
-								<label class="block text-gray-700 w-36 text-xs">Texture threshold
-									<span class="help-tip">?<span class="help-text"><span class="help-title">Texture Threshold</span><span>Max local gradient density (Laplacian variance) a pixel may have to be kept. Discards highly-textured moss/gravel noise while keeping smooth leaf surfaces.</span><span class="help-hint">Hint: Range [0, 100]. Lower (e.g. 20) removes more moss; higher keeps more detail. Default 32.0.</span></span></span>
-								</label>
+								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Texture Threshold</span><span>Max local gradient density (Laplacian variance) a pixel may have to be kept. Discards highly-textured moss/gravel noise while keeping smooth leaf surfaces.</span><span class="help-hint">Hint: Range [0, 100]. Lower (e.g. 20) removes more moss; higher keeps more detail. Default 32.0.</span></span></span> Texture threshold</label>
 								<input type="number" step="any" min="0" max="100" x-model="config.preprocess.textureThresh" class="block p-2 border text-xs w-20">
 							</div>
 							<div class="flex items-center">
-								<label class="block text-gray-700 w-36 text-xs">NDVI threshold
-									<span class="help-tip">?<span class="help-text"><span class="help-title">Low-NDVI Baseline</span><br>Minimum NDVI a pixel must exceed to count as vegetation. Keeps yellow/stressed leaves while stripping concrete background. Range [-1, 1].<span class="help-hint">Hint: Range [-1, 1]. Default 0.12. Raise to 0.2-0.3 for healthier-only foliage.</span></span></span>
-								</label>
+								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Low-NDVI Baseline</span><br>Minimum NDVI a pixel must exceed to count as vegetation. Keeps yellow/stressed leaves while stripping concrete background. Range [-1, 1].<span class="help-hint">Hint: Range [-1, 1]. Default 0.12. Raise to 0.2-0.3 for healthier-only foliage.</span></span></span> NDVI threshold</label>
 								<input type="number" step="any" min="-1" max="1" x-model="config.preprocess.ndviThresh" class="block p-2 border text-xs w-20">
 							</div>
 							<div class="flex items-center">
-								<label class="block text-gray-700 w-36 text-xs">Min area ratio
-									<span class="help-tip">?<span class="help-text"><span class="help-title">Minimum Contour Area</span><br>Smallest plant object kept, as a fraction of total image pixels. Blobs smaller than this are treated as noise.<span class="help-hint">Hint: Range [0, 1]. Default 0.0015 (0.15%). Raise for larger plants only.</span></span></span>
-								</label>
+								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Minimum Contour Area</span><br>Smallest plant object kept, as a fraction of total image pixels. Blobs smaller than this are treated as noise.<span class="help-hint">Hint: Range [0, 1]. Default 0.0015 (0.15%). Raise for larger plants only.</span></span></span> Min area ratio</label>
 								<input type="number" step="any" min="0" max="1" x-model="config.preprocess.minAreaRatio" class="block p-2 border text-xs w-20">
 							</div>
 							<div class="flex items-center">
-								<label class="block text-gray-700 w-36 text-xs">Solidity threshold
-									<span class="help-tip">?<span class="help-text"><span class="help-title">Minimum Solidity</span><br>Solidity = contour area / convex-hull area. Rejects scattered moss/speckle (low solidity) while keeping dense canopy/blobs.<span class="help-hint">Hint: Range [0, 1]. Default 0.50. Higher = stricter (bloblier) shapes.</span></span></span>
-								</label>
+								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Minimum Solidity</span><br>Solidity = contour area / convex-hull area. Rejects scattered moss/speckle (low solidity) while keeping dense canopy/blobs.<span class="help-hint">Hint: Range [0, 1]. Default 0.50. Higher = stricter (bloblier) shapes.</span></span></span> Solidity threshold</label>
 								<input type="number" step="any" min="0" max="1" x-model="config.preprocess.solidityThresh" class="block p-2 border text-xs w-20">
 							</div>
 							<div class="flex items-center col-span-2">
 								<label class="block text-gray-700 w-36 text-xs uppercase tracking-wide">Morphology</label>
 							</div>
 							<div class="flex items-center">
-								<label class="block text-gray-700 w-36 text-xs">Median blur size
-									<span class="help-tip">?<span class="help-text"><span class="help-title">Median Blur Kernel</span><br>Kernel size used to remove point noise before morphological filtering. Must be odd.<span class="help-hint">Hint: Range [1, 51], odd only. Default 5. Larger = smoother/noisier image. Use 1 = off.</span></span></span>
-								</label>
+								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Median Blur Kernel</span><br>Kernel size used to remove point noise before morphological filtering. Must be odd.<span class="help-hint">Hint: Range [1, 51], odd only. Default 5. Larger = smoother/noisier image. Use 1 = off.</span></span></span> Median blur size</label>
 								<input type="number" step="2" min="1" max="51" x-model="config.preprocess.medianBlur" class="block p-2 border text-xs w-20">
 							</div>
 							<div class="flex items-center">
-								<label class="block text-gray-700 w-36 text-xs">Open kernel size
-									<span class="help-tip">?<span class="help-text"><span class="help-title">Opening Kernel (erode→dilate)</span><br>Destroys fine moss bridges and thin connections between leaf blobs.<span class="help-hint">Hint: Range [1, 51], odd. Default 7. Raise to break up more bridges.</span></span></span>
-								</label>
+								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Opening Kernel (erode→dilate)</span><br>Destroys fine moss bridges and thin connections between leaf blobs.<span class="help-hint">Hint: Range [1, 51], odd. Default 7. Raise to break up more bridges.</span></span></span> Open kernel size</label>
 								<input type="number" step="2" min="1" max="51" x-model="config.preprocess.openKernel" class="block p-2 border text-xs w-20">
 							</div>
 							<div class="flex items-center">
-								<label class="block text-gray-700 w-36 text-xs">Close kernel size
-									<span class="help-tip">?<span class="help-text"><span class="help-title">Closing Kernel (dilate→erode)</span><br>Fills small internal gaps/holes inside a leaf blob so it reads as one solid plant.<span class="help-hint">Hint: Range [1, 51], odd. Default 5. Larger fills bigger holes.</span></span></span>
-								</label>
+								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Closing Kernel (dilate→erode)</span><br>Fills small internal gaps/holes inside a leaf blob so it reads as one solid plant.<span class="help-hint">Hint: Range [1, 51], odd. Default 5. Larger fills bigger holes.</span></span></span> Close kernel size</label>
 								<input type="number" step="2" min="1" max="51" x-model="config.preprocess.closeKernel" class="block p-2 border text-xs w-20">
 							</div>
 							<div class="flex items-center col-span-2">
 								<label class="block text-gray-700 w-36 text-xs uppercase tracking-wide">Advanced</label>
 							</div>
-							<div class="flex items-center">
-								<label class="block text-gray-700 w-36 text-xs">K-Means refine
-									<span class="help-tip">?<span class="help-text"><span class="help-title">Spectral K-Means (K=2)</span>Refines big blobs via K-Means on [Hue, Saturation, NDVI]. Separates green plant pixels from residual background within large clusters.<span class="help-hint">Hint: Boolean flag. Disabled by default. Enable to sharpen plant/background boundary on large blobs.</span></span></span>
-								</label>
+							<div class="flex items-center col-span-2">
+								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Spectral K-Means (K=2)</span>Refines big blobs via K-Means on [Hue, Saturation, NDVI]. Separates green plant pixels from residual background within large clusters.<span class="help-hint">Hint: Boolean flag. Disabled by default. Enable to sharpen plant/background boundary on large blobs.</span></span></span> K-Means refine</label>
 								<div class="flex items-center w-20">
 									<input type="checkbox" x-model="config.preprocess.spectralKMeans" class="h-4 w-4 cursor-pointer accent-green-600">
 								</div>
 							</div>
 							<div class="flex items-center">
-								<label class="block text-gray-700 w-36 text-xs">Spatial cluster
-									<span class="help-tip">?<span class="help-text"><span class="help-title">Spatial Proximity Clustering</span>Drops satellite moss blobs via spatial proximity grouping. Contours whose centroids fall within the merge distance are merged into one cluster; stray clusters are discarded.<span class="help-hint">Hint: Boolean flag. Disabled by default.</span></span></span>
-								</label>
+								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Spatial Proximity Clustering</span>Drops satellite moss blobs via spatial proximity grouping. Contours whose centroids fall within the merge distance are merged into one cluster; stray clusters are discarded.<span class="help-hint">Hint: Boolean flag. Disabled by default.</span></span></span> Spatial cluster</label>
 								<div class="flex items-center w-20">
 									<input type="checkbox" x-model="config.preprocess.spatialCluster" class="h-4 w-4 cursor-pointer accent-green-600">
 								</div>
 							</div>
 							<div class="flex items-center">
-								<label class="block text-gray-700 w-36 text-xs">Spatial merge dist
-									<span class="help-tip">?<span class="help-text"><span class="help-title">Spatial Merge Distance (px)</span>Max centroid distance to merge contours into one cluster. Used by spatial clustering to group nearby blobs.<span class="help-hint">Hint: Range [1, 500]. Default 50. Raise to merge farther-apart blobs.</span></span></span>
-								</label>
+								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Spatial Merge Distance (px)</span>Max centroid distance to merge contours into one cluster. Used by spatial clustering to group nearby blobs.<span class="help-hint">Hint: Range [1, 500]. Default 50. Raise to merge farther-apart blobs.</span></span></span> Spatial merge dist</label>
 								<input type="number" step="1" min="1" max="500" x-model="config.preprocess.spatialMergeDist" class="block p-2 border text-xs w-20">
 							</div>
 							<div class="flex items-center">
-								<label class="block text-gray-700 w-36 text-xs">Spectral consistency
-									<span class="help-tip">?<span class="help-text"><span class="help-title">Multi-Blob Spectral/Texture Consistency Gate</span>When more than one blob survives area/solidity filtering, scores each by leaf-likeness (saturation + NDVI - texture roughness) and drops blobs that are both spectrally dissimilar from the best blob and spatially non-adjacent to it. Rejects consolidated moss/lichen patches that look shape-identical to real canopy.<span class="help-hint">Hint: Boolean flag. Enabled by default; no-op when only one blob survives.</span></span></span>
-								</label>
+								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Multi-Blob Spectral/Texture Consistency Gate</span>When more than one blob survives area/solidity filtering, scores each by leaf-likeness (saturation + NDVI - texture roughness) and drops blobs that are both spectrally dissimilar from the best blob and spatially non-adjacent to it. Rejects consolidated moss/lichen patches that look shape-identical to real canopy.<span class="help-hint">Hint: Boolean flag. Enabled by default; no-op when only one blob survives.</span></span></span> Spectral consistency</label>
 								<div class="flex items-center w-20">
 									<input type="checkbox" x-model="config.preprocess.spectralConsistencyFilter" class="h-4 w-4 cursor-pointer accent-green-600">
 								</div>
 							</div>
 							<div class="flex items-center">
-								<label class="block text-gray-700 w-36 text-xs">Spectral gap guard
-									<span class="help-tip">?<span class="help-text"><span class="help-title">Spectral Gap Guard Ratio</span>Relative score ratio below which a spectrally-dissimilar blob is treated as background and dropped. Shared with the K-Means refine gate.<span class="help-hint">Hint: Range [0, 1]. Default 0.85. Lower to prune more aggressively.</span></span></span>
-								</label>
+								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Spectral Gap Guard Ratio</span>Relative score ratio below which a spectrally-dissimilar blob is treated as background and dropped. Shared with the K-Means refine gate.<span class="help-hint">Hint: Range [0, 1]. Default 0.85. Lower to prune more aggressively.</span></span></span> Spectral gap guard</label>
 								<input type="number" step="any" min="0" max="1" x-model="config.preprocess.spectralGapGuard" class="block p-2 border text-xs w-20">
 							</div>
 							<div class="flex items-center">
-								<label class="block text-gray-700 w-36 text-xs">Gentle mode
-									<span class="help-tip">?<span class="help-text"><span class="help-title">Stressed-Plant Mode</span>Soft background rejection + central anchor enclosure. Preserves yellow/brown/sparse/small leaves for stressed or early-stage plants.<span class="help-hint">Hint: Boolean flag. Disabled by default.</span></span></span>
-								</label>
+								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Stressed-Plant Mode</span>Soft background rejection + central anchor enclosure. Preserves yellow/brown/sparse/small leaves for stressed or early-stage plants.<span class="help-hint">Hint: Boolean flag. Disabled by default.</span></span></span> Gentle mode</label>
 								<div class="flex items-center w-20">
 									<input type="checkbox" x-model="config.preprocess.gentleMode" class="h-4 w-4 cursor-pointer accent-green-600">
 								</div>
 							</div>
 							<div class="flex items-center">
-								<label class="block text-gray-700 w-36 text-xs">Gentle radius
-									<span class="help-tip">?<span class="help-text"><span class="help-title">Gentle Anchor Radius (frac)</span>Anchor radial enclosure as fraction of image width, used in gentle (stressed-plant) mode.<span class="help-hint">Hint: Range [0, 1]. Default 0.38.</span></span></span>
-								</label>
+								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Gentle Anchor Radius (frac)</span>Anchor radial enclosure as fraction of image width, used in gentle (stressed-plant) mode.<span class="help-hint">Hint: Range [0, 1]. Default 0.38.</span></span></span> Gentle radius</label>
 								<input type="number" step="any" min="0" max="1" x-model="config.preprocess.gentleRadius" class="block p-2 border text-xs w-20">
 							</div>
 						</div>
@@ -746,6 +714,7 @@
 				config: {
 					inDir: '.input',
 					outDir: '.output',
+					refDir: '.input_ref/',
 					radioRefFile: '.input_ref/radiometric_reference.csv',
 					radioTemplatePath: '.input_ref/radiometric_board_03.png',
 					doRadio: true,
