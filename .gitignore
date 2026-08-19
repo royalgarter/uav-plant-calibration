@@ -50,3 +50,4 @@ output.png
 /.test_output
 /.output - Copy
 /.input.zip
+/.input_ref/manual_*.png

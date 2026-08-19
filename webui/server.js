@@ -98,6 +98,34 @@ const server = http.createServer((req, res) => {
 		return;
 	}
 
+	// Save a manually-cropped board template (data URL PNG) into .input_ref/
+	if (req.method === 'POST' && req.url === '/save-template') {
+		let body = '';
+		req.on('data', chunk => body += chunk.toString());
+		req.on('end', () => {
+			try {
+				const { name, dataUrl } = JSON.parse(body);
+				if (!name || !/^[\w.-]+\.png$/i.test(name)) {
+					throw new Error('Invalid template file name');
+				}
+				const match = /^data:image\/png;base64,(.+)$/.exec(dataUrl || '');
+				if (!match) {
+					throw new Error('Invalid image data');
+				}
+				const refDir = path.join(process.cwd(), '.input_ref');
+				fs.mkdirSync(refDir, { recursive: true });
+				const outPath = path.join(refDir, name);
+				fs.writeFileSync(outPath, Buffer.from(match[1], 'base64'));
+				res.writeHead(200, { 'Content-Type': 'application/json' });
+				res.end(JSON.stringify({ path: '.input_ref/' + name }));
+			} catch (error) {
+				res.writeHead(400, { 'Content-Type': 'application/json' });
+				res.end(JSON.stringify({ error: error.toString() }));
+			}
+		});
+		return;
+	}
+
 	// Serve static files
 	let filePath = req.url === '/' ? '/index.html' : req.url;
 
