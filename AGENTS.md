@@ -2,6 +2,8 @@
 
 UAV plant-image calibration tool. C++17 CLI + optional raylib GUI + web UI. All builds are driven by `./run.sh`, not Make/CMake.
 
+> **Architecture:** See [ARCHITECTURE.md](ARCHITECTURE.md) for source layout, build matrix, processing pipeline, GUI architecture, and data structures.
+
 ## Build & verify
 
 - Every target is a `./run.sh` subcommand. Run `./run.sh` with no args to list all targets.
