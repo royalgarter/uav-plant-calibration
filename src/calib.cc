@@ -8,6 +8,8 @@
 #include <opencv2/imgproc.hpp>
 #include <opencv2/calib3d.hpp>
 #include <opencv2/video.hpp>
+#include <opencv2/core/utils/logger.hpp>
+#include <tiffio.h>
 
 // Uncomment to enable Windows GUI support
 // #define WINGUI
@@ -41,6 +43,10 @@ void showUsage() {
 	cout << "  --spatial-merge-dist  Max centroid distance (px) to merge contours (default: 50)." << endl;
 	cout << "  --no-spectral-consistency  Disable the multi-blob spectral/texture consistency gate (default: enabled)." << endl;
 	cout << "  --spectral-gap-guard <r>   Relative score ratio (0-1) below which a spectrally-dissimilar blob is dropped (default: 0.85)." << endl;
+	cout << "  --legacy     (Default) Legacy green mask (pre-Jul-12 moss-filter, commit 4c430ff): PlantIndex+Otsu, GNDVI fusion," << endl;
+	cout << "               HSV range, centroid-distance outlier filter. No solidity/texture/spectral gates." << endl;
+	cout << "  --moss       Opt in to the moss-filter pipeline (non-concrete/solidity/texture/NDVI/spectral-consistency gates)." << endl;
+	cout << "               If both --legacy and --moss given, the one listed last on the command line wins." << endl;
 	cout << "  --gentle     Stressed-plant mode: soft background rejection + central anchor enclosure." << endl;
 	cout << "               Preserves yellow/brown/sparse/small leaves. Optional: --gentle-radius <frac>" << endl;
 	cout << "               (anchor radial enclosure as fraction of image width, default 0.38)." << endl;
@@ -56,6 +62,13 @@ void showUsage() {
 }
 
 int main(int argc, char** argv) {
+	// Silence TIFF warnings (e.g. non-null-terminated ASCII EXIF tags from drone TIFFs):
+	// OpenCV's decoder routes libtiff warnings through its own log level, but our own
+	// direct TIFFOpen() calls in parseMetadata() go straight to libtiff, so both must be silenced.
+	cv::utils::logging::setLogLevel(cv::utils::logging::LOG_LEVEL_ERROR);
+	TIFFSetWarningHandler(nullptr);
+	TIFFSetWarningHandlerExt(nullptr);
+
 	// Generate log filename
 	auto t = time(nullptr);
 	auto tm = *localtime(&t);
@@ -280,6 +293,10 @@ int main(int argc, char** argv) {
 				greenParams.spectralConsistencyFilter = false;
 			} else if (arg == "--spectral-gap-guard") {
 				if (i + 1 < argc && argv[i+1][0] != '-') { greenParams.spectralGapGuard = atof(argv[i+1]); i++; }
+			} else if (arg == "--legacy") {
+				greenParams.legacyMode = true;
+			} else if (arg == "--moss") {
+				greenParams.legacyMode = false;
 			} else if (arg == "--gentle") {
 				greenParams.gentleMode = true;
 			} else if (arg == "--gentle-radius") {
@@ -481,38 +498,57 @@ int main(int argc, char** argv) {
 	for (auto const& [prefix, data] : allGroups) {
 		prefixes.push_back(prefix);
 	}
+	int numGroups = (int)prefixes.size();
 
 	map<string, map<string, double>> groupVegAverages;
 
 	gLog << "\n" << endl;
 
-	for (int i = 0; i < (int)prefixes.size(); ++i) {
-		string prefix = prefixes[i];
-		GroupData& data = allGroups[prefix];
+	// Phase A prep (serial): resolve per-group pointers/reference images, and
+	// flatten (group, image) pairs into one work list so the parallel region
+	// below spans ALL images across ALL groups instead of just one group's
+	// (typically 6) images at a time. refMats/groupPtrs are indexed by group
+	// and never written again after this point, so reading them by index
+	// inside the parallel loop is race-free even though images from different
+	// groups now run concurrently on different threads.
+	vector<GroupData*> groupPtrs(numGroups);
+	vector<Mat> refMats(numGroups);
+	vector<map<int, Mat>> alignedBandsPerGroup(numGroups);
+	vector<pair<int, int>> workItems;
+
+	for (int i = 0; i < numGroups; ++i) {
+		GroupData& data = allGroups[prefixes[i]];
+		groupPtrs[i] = &data;
 
 		gLog << "****************************************" << endl;
-		gLog << "Processing group: " << prefix << " (" << data.images.size() << " images)" << endl;
+		gLog << "Group: " << prefixes[i] << " (" << data.images.size() << " images)" << endl;
 		gLog << "****************************************" << endl;
 
-		Mat refMat;
 		if (data.refInfo) {
 			gLog << "  Reference found: " << data.refInfo->filename << endl;
 			Mat rawRef = imread(data.refInfo->path, IMREAD_UNCHANGED | IMREAD_ANYDEPTH | IMREAD_ANYCOLOR);
 			if (!rawRef.empty()) {
-				Mat processedRef = rawRef;
-				// if (doRadio && data.coeffs.valid) {
-				// 	processedRef = applyRadiometricCalibration(rawRef, data.coeffs);
-				// }
-				refMat = undistortImg(processedRef, *data.refInfo);
+				refMats[i] = undistortImg(rawRef, *data.refInfo);
 			}
 		} else {
-			gLog << "  No reference image found for group " << prefix << endl;
+			gLog << "  No reference image found for group " << prefixes[i] << endl;
 		}
 
-		map<int, Mat> alignedBands;
-
-		#pragma omp parallel for schedule(dynamic)
 		for (int j = 0; j < (int)data.images.size(); ++j) {
+			workItems.push_back({i, j});
+		}
+	}
+
+	gLog << "\nProcessing " << workItems.size() << " images across " << numGroups << " groups (parallel)...\n" << endl;
+
+	#pragma omp parallel for schedule(dynamic)
+	for (int w = 0; w < (int)workItems.size(); ++w) {
+		int i = workItems[w].first;
+		int j = workItems[w].second;
+		GroupData& data = *groupPtrs[i];
+		Mat& refMat = refMats[i];
+		map<int, Mat>& alignedBands = alignedBandsPerGroup[i];
+		{
 			auto& info = data.images[j];
 			stringstream ss;
 			ss << "\n  [Image: " << info.filename << "]" << endl;
@@ -687,6 +723,15 @@ int main(int argc, char** argv) {
 			}
 			gLog << ss.str();
 		}
+	}
+
+	// Phase B (serial): per-group post-processing (green mask, vegetation
+	// indices). Runs after the parallel region's implicit barrier, so each
+	// group's alignedBandsPerGroup[i] is guaranteed fully populated here.
+	for (int i = 0; i < numGroups; ++i) {
+		string prefix = prefixes[i];
+		GroupData& data = *groupPtrs[i];
+		map<int, Mat>& alignedBands = alignedBandsPerGroup[i];
 
 		// Pre-calculate common green mask if RGB image (band 0) is available
 		GreenMaskResults commonRes;

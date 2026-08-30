@@ -185,6 +185,13 @@ struct GreenMaskParams {
 	int hsvTolH = 15;                  // global hue tolerance (deg/2, H 0-180)
 	int hsvTolS = 40;                  // global saturation tolerance
 	int hsvTolV = 40;                  // global value tolerance
+
+	// Legacy mode: reproduces the pre-moss-filter (Jul 12, commit 4c430ff) algorithm
+	// verbatim -- PlantIndex(G+R-2B)+Otsu, optional GNDVI fusion, HSV(18,25,30..90,255,255)
+	// range, light morphology, centroid-outlier-distance blob filter. No saturation/chroma
+	// background gate, no texture/solidity/spectral-consistency gates -- so it does not
+	// reject desaturated/stressed (yellow-brown) foliage the way the newer pipeline can.
+	bool legacyMode = true;
 };
 
 // Vegetation Indices
@@ -203,6 +210,7 @@ cv::Mat filterSatelliteClusters(const cv::Mat& inputMask, double maxMergeDistanc
 cv::Mat computeColorSpotMask(const cv::Mat& rgbImg, const GreenMaskParams& params);
 cv::Mat computeSoftNonConcreteMask(const cv::Mat& rgbImg);
 cv::Mat applyCentralAnchorEnclosure(const cv::Mat& candidateMask, double maxRadiusRatio = 0.38);
+GreenMaskResults applyGreenMaskLegacy(cv::Mat& indexImg, const cv::Mat& rgbImg, const std::map<int, cv::Mat>& bands);
 cv::Mat calculateVegIndex(const std::string& type, const std::map<int, cv::Mat>& bands, const cv::Mat& mask = cv::Mat());
 GreenMaskResults applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const std::string& outputDir, const std::string& prefix, const std::string& indexName, const std::map<int, cv::Mat>& bands, const GreenMaskParams& params = GreenMaskParams());
 void exportVegIndexCsv(const std::string& outPath, const std::vector<std::string>& requestedIndices, const std::map<std::string, std::map<std::string, double>>& averages);

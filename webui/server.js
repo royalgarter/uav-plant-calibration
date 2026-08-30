@@ -242,6 +242,7 @@ function executeCalibration(config, res) {
 	if (pre.spectralGapGuard !== 0.85) args.push('--spectral-gap-guard', String(pre.spectralGapGuard));
 	if (pre.gentleMode) args.push('--gentle');
 	if (pre.gentleRadius !== 0.38) args.push('--gentle-radius', String(pre.gentleRadius));
+	if (pre.mossFilter) args.push('--moss');
 
 	const indices = Object.keys(calc).filter(k => calc[k]).map(k => k.toLowerCase());
 	if (indices.length > 0) {

@@ -1560,9 +1560,177 @@ Mat filterSatelliteClusters(const Mat& inputMask, double maxMergeDistancePx) {
 	return cleanMask;
 }
 
+// Legacy (pre-Jul-12-moss-filter) green mask: PlantIndex(G+R-2B)+Otsu, optional GNDVI
+// fusion, HSV(18,25,30..90,255,255) range, light morphology, centroid-outlier-distance
+// blob filter. Ported verbatim from commit 4c430ff. No solidity/texture/spectral gates.
+GreenMaskResults applyGreenMaskLegacy(cv::Mat& indexImg, const cv::Mat& rgbImg, const map<int, Mat>& bands) {
+	GreenMaskResults results;
+	if (rgbImg.empty()) return results;
+
+	Mat rgbf; rgbImg.convertTo(rgbf, CV_32F);
+	vector<Mat> bgr; split(rgbf, bgr);
+	Mat B = bgr[0]; Mat G = bgr[1]; Mat R = bgr[2];
+	const float eps = 1e-6f;
+
+	Mat PlantIndex = G + R - 2.0f * B;
+	Mat PlantIndex_norm; normalize(PlantIndex, PlantIndex_norm, 0.0f, 255.0f, NORM_MINMAX);
+	Mat PlantIndex8; PlantIndex_norm.convertTo(PlantIndex8, CV_8U);
+	Mat maskPlantIndex; threshold(PlantIndex8, maskPlantIndex, 0, 255, THRESH_BINARY | THRESH_OTSU);
+
+	Mat combined_mask = Mat::zeros(PlantIndex8.size(), CV_8U);
+	bool hasNIR = false;
+	Mat maskGNDVI;
+	Mat GNDVI_norm;
+
+	if (bands.count(5)) {
+		Mat NIR = bands.at(5).clone();
+		if (!NIR.empty()) {
+			if (NIR.channels() > 1) {
+				cout << "    Warning: Band 5 has unexpected properties. Ignoring NIR for GNDVI." << endl;
+			} else {
+				cv::resize(NIR, NIR, PlantIndex8.size());
+				Mat NIRf; NIR.convertTo(NIRf, CV_32F);
+
+				if (NIRf.total() > 0) {
+					Mat flat = NIRf.reshape(1, (int)NIRf.total());
+					Mat sorted;
+					cv::sort(flat, sorted, SORT_EVERY_COLUMN + SORT_ASCENDING);
+					int total = sorted.rows;
+					int idx2 = std::max(0, (int)std::round(total * 0.02f));
+					int idx98 = std::min(total - 1, (int)std::round(total * 0.98f));
+					float p2 = sorted.at<float>(idx2);
+					float p98 = sorted.at<float>(idx98);
+					if (p98 <= p2) {
+						p2 = sorted.at<float>(0);
+						p98 = sorted.at<float>(std::min(total - 1, 1));
+					}
+
+					Mat NIRclipped = NIRf.clone();
+					Mat lowMask = NIRf < p2;
+					Mat highMask = NIRf > p98;
+					NIRclipped.setTo(p2, lowMask);
+					NIRclipped.setTo(p98, highMask);
+
+					Mat Gf; G.convertTo(Gf, CV_32F);
+					Mat GNDVI = (NIRclipped - Gf) / (NIRclipped + Gf + eps);
+
+					normalize(GNDVI, GNDVI_norm, 0.0f, 255.0f, NORM_MINMAX);
+					Mat GNDVI8; GNDVI_norm.convertTo(GNDVI8, CV_8U);
+
+					threshold(GNDVI8, maskGNDVI, 0, 255, THRESH_BINARY | THRESH_OTSU);
+					hasNIR = true;
+				}
+			}
+		}
+	}
+
+	if (hasNIR) {
+		Mat score;
+		Mat Plant_n32; PlantIndex_norm.convertTo(Plant_n32, CV_32F);
+		Mat GNDVI_n32; GNDVI_norm.convertTo(GNDVI_n32, CV_32F);
+
+		float alpha = 0.6f, beta = 0.4f;
+		score = alpha * Plant_n32 + beta * GNDVI_n32;
+
+		Mat score8; score.convertTo(score8, CV_8U);
+		Mat maskScore; threshold(score8, maskScore, 0, 255, THRESH_BINARY | THRESH_OTSU);
+
+		bitwise_and(maskPlantIndex, maskGNDVI, combined_mask);
+		bitwise_or(combined_mask, maskScore, combined_mask);
+	} else {
+		combined_mask = maskPlantIndex;
+	}
+
+	Mat hsv; cvtColor(rgbImg, hsv, COLOR_BGR2HSV);
+	Mat hsv_mask;
+	inRange(hsv, Scalar(18, 25, 30), Scalar(90, 255, 255), hsv_mask);
+	bitwise_and(combined_mask, hsv_mask, combined_mask);
+
+	medianBlur(combined_mask, combined_mask, 3);
+	Mat kernelClose = getStructuringElement(MORPH_ELLIPSE, Size(3, 3));
+	morphologyEx(combined_mask, combined_mask, MORPH_CLOSE, kernelClose);
+	Mat kernelDilate = getStructuringElement(MORPH_ELLIPSE, Size(3, 3));
+	dilate(combined_mask, combined_mask, kernelDilate, Point(-1, -1), 1);
+
+	vector<vector<Point>> contours;
+	findContours(combined_mask, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+
+	struct ContourData { int index; double area; Point2f centroid; };
+	vector<ContourData> validContours;
+	double tempTotalArea = 0;
+	Point2f tempCentroid(0, 0);
+
+	for (int i = 0; i < (int)contours.size(); i++) {
+		double area = contourArea(contours[i]);
+		if (area > 15) {
+			Moments mu = moments(contours[i]);
+			Point2f centroid(mu.m10 / (mu.m00 + 1e-6), mu.m01 / (mu.m00 + 1e-6));
+			validContours.push_back({i, area, centroid});
+			tempTotalArea += area;
+			tempCentroid += centroid * (float)area;
+		}
+	}
+
+	Mat filtered_mask = Mat::zeros(combined_mask.size(), CV_8U);
+	results.valid = false;
+
+	if (tempTotalArea > 0) {
+		tempCentroid /= (float)tempTotalArea;
+
+		double variance_dist = 0;
+		for (const auto& cd : validContours) {
+			double dist = norm(cd.centroid - tempCentroid);
+			variance_dist += cd.area * (dist * dist);
+		}
+		double stddev_dist = sqrt(variance_dist / tempTotalArea);
+		double max_allowed_dist = std::max(3.0 * stddev_dist, (double)(combined_mask.cols * 0.10));
+
+		vector<Point> allPoints;
+		double finalTotalArea = 0;
+		Point2f finalCentroid(0, 0);
+
+		for (const auto& cd : validContours) {
+			double dist = norm(cd.centroid - tempCentroid);
+			if (dist <= max_allowed_dist) {
+				drawContours(filtered_mask, contours, cd.index, Scalar(255), FILLED);
+				for (const auto& p : contours[cd.index]) allPoints.push_back(p);
+				finalTotalArea += cd.area;
+				finalCentroid += cd.centroid * (float)cd.area;
+			}
+		}
+
+		if (finalTotalArea > 0) {
+			combined_mask = filtered_mask;
+			results.totalArea = finalTotalArea;
+			results.centroid = finalCentroid / (float)(finalTotalArea + 1e-6);
+			results.valid = true;
+
+			if (allPoints.size() >= 5) {
+				convexHull(allPoints, results.convexHull);
+				results.ellipse = fitEllipse(allPoints);
+			}
+		} else {
+			combined_mask = Mat::zeros(combined_mask.size(), CV_8U);
+		}
+	} else {
+		combined_mask = Mat::zeros(combined_mask.size(), CV_8U);
+	}
+
+	if (!indexImg.empty() && indexImg.size() == combined_mask.size()) {
+		indexImg.setTo(0, combined_mask == 0);
+	}
+
+	results.mask = combined_mask;
+	return results;
+}
+
 GreenMaskResults applyGreenMask(cv::Mat& indexImg, const cv::Mat& rgbImg, const string& outputDir, const string& prefix, const string& indexName, const map<int, Mat>& bands, const GreenMaskParams& params) {
 	GreenMaskResults results;
 	if (rgbImg.empty()) return results;
+
+	if (params.legacyMode) {
+		return applyGreenMaskLegacy(indexImg, rgbImg, bands);
+	}
 
 	// ==========================================================================
 	// GENTLE MODE (Stressed-Plant Friendly): preserves yellow/brown/sparse leaves

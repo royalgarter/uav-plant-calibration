@@ -172,9 +172,14 @@
 						</div>
 
 						<hr class="my-6">
-						<div class="flex items-center cursor-pointer" @click="showPreprocess = !showPreprocess">
-							<label class="block font-medium text-gray-700 w-48 my-2">Preprocessing Parameters:</label>
-							<svg class="w-4 h-4 ml-1 text-gray-500 transition-transform" :class="showPreprocess ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+						<div class="flex items-center justify-between">
+							<div class="flex items-center cursor-pointer" @click="showPreprocess = !showPreprocess">
+								<label class="block font-medium text-gray-700 w-48 my-2">Preprocessing Parameters:</label>
+								<svg class="w-4 h-4 ml-1 text-gray-500 transition-transform" :class="showPreprocess ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+							</div>
+							<button @click="resetPreprocess()" type="button" class="cursor-pointer h-8 px-2 py-1 bg-gray-500 hover:bg-gray-600 text-white text-xs flex items-center" title="Reset all preprocessing parameters to default">
+								Reset
+							</button>
 						</div>
 						<div class="grid grid-cols-2 gap-2 text-xs" x-show="showPreprocess">
 							<div class="flex items-center col-span-2 justify-between">
@@ -226,76 +231,85 @@
 									</template>
 								</div>
 							</div>
-							<div class="flex items-center col-span-2">
+							<div class="flex items-center col-span-2" x-show="config.preprocess.mossFilter" x-transition>
 								<label class="block text-gray-700 w-36 text-xs uppercase tracking-wide">Thresholds</label>
 							</div>
-							<div class="flex items-center">
+							<div class="flex items-center" x-show="config.preprocess.mossFilter" x-transition>
 								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Texture Threshold</span><span>Max local gradient density (Laplacian variance) a pixel may have to be kept. Discards highly-textured moss/gravel noise while keeping smooth leaf surfaces.</span><span class="help-hint">Hint: Range [0, 100]. Lower (e.g. 20) removes more moss; higher keeps more detail. Default 32.0.</span></span></span> Texture threshold</label>
 								<input type="number" step="any" min="0" max="100" x-model="config.preprocess.textureThresh" class="block p-2 border text-xs w-20">
 							</div>
-							<div class="flex items-center">
+							<div class="flex items-center" x-show="config.preprocess.mossFilter" x-transition>
 								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Low-NDVI Baseline</span><br>Minimum NDVI a pixel must exceed to count as vegetation. Keeps yellow/stressed leaves while stripping concrete background. Range [-1, 1].<span class="help-hint">Hint: Range [-1, 1]. Default 0.12. Raise to 0.2-0.3 for healthier-only foliage.</span></span></span> NDVI threshold</label>
 								<input type="number" step="any" min="-1" max="1" x-model="config.preprocess.ndviThresh" class="block p-2 border text-xs w-20">
 							</div>
-							<div class="flex items-center">
+							<div class="flex items-center" x-show="config.preprocess.mossFilter" x-transition>
 								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Minimum Contour Area</span><br>Smallest plant object kept, as a fraction of total image pixels. Blobs smaller than this are treated as noise.<span class="help-hint">Hint: Range [0, 1]. Default 0.0015 (0.15%). Raise for larger plants only.</span></span></span> Min area ratio</label>
 								<input type="number" step="any" min="0" max="1" x-model="config.preprocess.minAreaRatio" class="block p-2 border text-xs w-20">
 							</div>
-							<div class="flex items-center">
+							<div class="flex items-center" x-show="config.preprocess.mossFilter" x-transition>
 								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Minimum Solidity</span><br>Solidity = contour area / convex-hull area. Rejects scattered moss/speckle (low solidity) while keeping dense canopy/blobs.<span class="help-hint">Hint: Range [0, 1]. Default 0.50. Higher = stricter (bloblier) shapes.</span></span></span> Solidity threshold</label>
 								<input type="number" step="any" min="0" max="1" x-model="config.preprocess.solidityThresh" class="block p-2 border text-xs w-20">
 							</div>
-							<div class="flex items-center col-span-2">
+							<div class="flex items-center col-span-2" x-show="config.preprocess.mossFilter" x-transition>
 								<label class="block text-gray-700 w-36 text-xs uppercase tracking-wide">Morphology</label>
 							</div>
-							<div class="flex items-center">
+							<div class="flex items-center" x-show="config.preprocess.mossFilter" x-transition>
 								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Median Blur Kernel</span><br>Kernel size used to remove point noise before morphological filtering. Must be odd.<span class="help-hint">Hint: Range [1, 51], odd only. Default 5. Larger = smoother/noisier image. Use 1 = off.</span></span></span> Median blur size</label>
 								<input type="number" step="2" min="1" max="51" x-model="config.preprocess.medianBlur" class="block p-2 border text-xs w-20">
 							</div>
-							<div class="flex items-center">
+							<div class="flex items-center" x-show="config.preprocess.mossFilter" x-transition>
 								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Opening Kernel (erode→dilate)</span><br>Destroys fine moss bridges and thin connections between leaf blobs.<span class="help-hint">Hint: Range [1, 51], odd. Default 7. Raise to break up more bridges.</span></span></span> Open kernel size</label>
 								<input type="number" step="2" min="1" max="51" x-model="config.preprocess.openKernel" class="block p-2 border text-xs w-20">
 							</div>
-							<div class="flex items-center">
+							<div class="flex items-center" x-show="config.preprocess.mossFilter" x-transition>
 								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Closing Kernel (dilate→erode)</span><br>Fills small internal gaps/holes inside a leaf blob so it reads as one solid plant.<span class="help-hint">Hint: Range [1, 51], odd. Default 5. Larger fills bigger holes.</span></span></span> Close kernel size</label>
 								<input type="number" step="2" min="1" max="51" x-model="config.preprocess.closeKernel" class="block p-2 border text-xs w-20">
 							</div>
 							<div class="flex items-center col-span-2">
 								<label class="block text-gray-700 w-36 text-xs uppercase tracking-wide">Advanced</label>
 							</div>
-							<div class="flex items-center col-span-2">
+							<div class="flex items-center">
+								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Moss Filter</span>Opt in to the moss-filter pipeline (non-concrete/solidity/texture/NDVI/spectral-consistency gates below). When unchecked (default), uses the original green mask algorithm (commit 4c430ff, pre-Jul-12): PlantIndex(G+R-2B)+Otsu threshold, optional GNDVI fusion, HSV(18,25,30..90,255,255) range, light morphology, centroid-outlier-distance blob filter.<span class="help-hint">Hint: Boolean flag. Disabled by default. Gates all options below.</span></span></span> Moss filter</label>
+								<div class="flex items-center w-20">
+									<input type="checkbox" x-model="config.preprocess.mossFilter" class="h-4 w-4 cursor-pointer accent-green-600">
+								</div>
+							</div>
+							<div class="flex items-center col-span-2" x-show="config.preprocess.mossFilter" x-transition>
+								<hr class="w-full border-gray-200">
+							</div>
+							<div class="flex items-center" x-show="config.preprocess.mossFilter" x-transition>
 								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Spectral K-Means (K=2)</span>Refines big blobs via K-Means on [Hue, Saturation, NDVI]. Separates green plant pixels from residual background within large clusters.<span class="help-hint">Hint: Boolean flag. Disabled by default. Enable to sharpen plant/background boundary on large blobs.</span></span></span> K-Means refine</label>
 								<div class="flex items-center w-20">
 									<input type="checkbox" x-model="config.preprocess.spectralKMeans" class="h-4 w-4 cursor-pointer accent-green-600">
 								</div>
 							</div>
-							<div class="flex items-center">
+							<div class="flex items-center" x-show="config.preprocess.mossFilter" x-transition>
 								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Spatial Proximity Clustering</span>Drops satellite moss blobs via spatial proximity grouping. Contours whose centroids fall within the merge distance are merged into one cluster; stray clusters are discarded.<span class="help-hint">Hint: Boolean flag. Disabled by default.</span></span></span> Spatial cluster</label>
 								<div class="flex items-center w-20">
 									<input type="checkbox" x-model="config.preprocess.spatialCluster" class="h-4 w-4 cursor-pointer accent-green-600">
 								</div>
 							</div>
-							<div class="flex items-center">
+							<div class="flex items-center" x-show="config.preprocess.mossFilter" x-transition>
 								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Spatial Merge Distance (px)</span>Max centroid distance to merge contours into one cluster. Used by spatial clustering to group nearby blobs.<span class="help-hint">Hint: Range [1, 500]. Default 50. Raise to merge farther-apart blobs.</span></span></span> Spatial merge dist</label>
 								<input type="number" step="1" min="1" max="500" x-model="config.preprocess.spatialMergeDist" class="block p-2 border text-xs w-20">
 							</div>
-							<div class="flex items-center">
+							<div class="flex items-center" x-show="config.preprocess.mossFilter" x-transition>
 								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Multi-Blob Spectral/Texture Consistency Gate</span>When more than one blob survives area/solidity filtering, scores each by leaf-likeness (saturation + NDVI - texture roughness) and drops blobs that are both spectrally dissimilar from the best blob and spatially non-adjacent to it. Rejects consolidated moss/lichen patches that look shape-identical to real canopy.<span class="help-hint">Hint: Boolean flag. Enabled by default; no-op when only one blob survives.</span></span></span> Spectral consistency</label>
 								<div class="flex items-center w-20">
 									<input type="checkbox" x-model="config.preprocess.spectralConsistencyFilter" class="h-4 w-4 cursor-pointer accent-green-600">
 								</div>
 							</div>
-							<div class="flex items-center">
+							<div class="flex items-center" x-show="config.preprocess.mossFilter" x-transition>
 								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Spectral Gap Guard Ratio</span>Relative score ratio below which a spectrally-dissimilar blob is treated as background and dropped. Shared with the K-Means refine gate.<span class="help-hint">Hint: Range [0, 1]. Default 0.85. Lower to prune more aggressively.</span></span></span> Spectral gap guard</label>
 								<input type="number" step="any" min="0" max="1" x-model="config.preprocess.spectralGapGuard" class="block p-2 border text-xs w-20">
 							</div>
-							<div class="flex items-center">
+							<div class="flex items-center" x-show="config.preprocess.mossFilter" x-transition>
 								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Stressed-Plant Mode</span>Soft background rejection + central anchor enclosure. Preserves yellow/brown/sparse/small leaves for stressed or early-stage plants.<span class="help-hint">Hint: Boolean flag. Disabled by default.</span></span></span> Gentle mode</label>
 								<div class="flex items-center w-20">
 									<input type="checkbox" x-model="config.preprocess.gentleMode" class="h-4 w-4 cursor-pointer accent-green-600">
 								</div>
 							</div>
-							<div class="flex items-center">
+							<div class="flex items-center" x-show="config.preprocess.mossFilter" x-transition>
 								<label class="block text-gray-700 w-36 text-xs"><span class="help-tip">?<span class="help-text"><span class="help-title">Gentle Anchor Radius (frac)</span>Anchor radial enclosure as fraction of image width, used in gentle (stressed-plant) mode.<span class="help-hint">Hint: Range [0, 1]. Default 0.38.</span></span></span> Gentle radius</label>
 								<input type="number" step="any" min="0" max="1" x-model="config.preprocess.gentleRadius" class="block p-2 border text-xs w-20">
 							</div>
@@ -360,7 +374,8 @@
 				<div class="border min-h-96">
 					<!-- Tabs Header -->
 					<div class="flex border-b">
-						<button @click="activeTab = 'gallery'" :class="activeTab === 'gallery' ? 'border-b-2 border-green-600 text-green-700 bg-green-50' : 'text-gray-500 hover:text-gray-700'" class="px-6 py-3 font-semibold transition-colors">Image Gallery</button>
+						<button @click="activeTab = 'input'; fetchInputFiles()" :class="activeTab === 'input' ? 'border-b-2 border-green-600 text-green-700 bg-green-50' : 'text-gray-500 hover:text-gray-700'" class="px-6 py-3 font-semibold transition-colors">Input Images</button>
+						<button @click="activeTab = 'gallery'" :class="activeTab === 'gallery' ? 'border-b-2 border-green-600 text-green-700 bg-green-50' : 'text-gray-500 hover:text-gray-700'" class="px-6 py-3 font-semibold transition-colors">Output Images</button>
 						<button @click="activeTab = 'reports'; fetchReportFiles()" :class="activeTab === 'reports' ? 'border-b-2 border-green-600 text-green-700 bg-green-50' : 'text-gray-500 hover:text-gray-700'" class="px-6 py-3 font-semibold transition-colors">Reports</button>
 					</div>
 
@@ -397,6 +412,38 @@
 										@click="openModal(file)"
 									>
 										<img :src="'/'/*IMPORTANT: relative path*/ + currentPath + '/' + file.name" :alt="file.name" class="w-full h-32 object-cover">
+										<div class="p-2 text-sm truncate text-gray-600 bg-white" x-text="file.name"></div>
+									</div>
+								</template>
+							</div>
+						</div>
+
+						<!-- Input Images Tab -->
+						<div x-show="activeTab === 'input'" x-cloak>
+							<div class="flex justify-between items-center mb-6">
+								<div class="flex space-x-2 items-center">
+									<span class="text-sm text-gray-600" x-text="config.inDir"></span>
+									<button @click="fetchInputFiles()" class="p-1 hover:bg-gray-100 rounded">
+										<svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+									</button>
+								</div>
+							</div>
+
+							<div x-show="loadingInputFiles" class="flex justify-center py-12">
+								<div class="animate-spin h-12 w-12 border-b-2 border-blue-600"></div>
+							</div>
+
+							<div x-show="!loadingInputFiles && inputFiles.length === 0" class="text-center py-12 text-gray-400">
+								<svg class="w-16 h-16 mx-auto mb-4 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+								<p>No images found in <span class="font-mono" x-text="config.inDir"></span></p>
+							</div>
+
+							<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-4" x-show="!loadingInputFiles && inputFiles.length > 0">
+								<template x-for="file in inputFiles" :key="file.name">
+									<div class="group relative bg-gray-50 overflow-hidden border hover:border-blue-400 transition cursor-pointer"
+										@click="openInputModal(file)"
+									>
+										<img :src="'/' + config.inDir + '/' + file.name" :alt="file.name" class="w-full h-32 object-cover">
 										<div class="p-2 text-sm truncate text-gray-600 bg-white" x-text="file.name"></div>
 									</div>
 								</template>
@@ -468,13 +515,12 @@
 
 			<button @click="modalOpen = false" class="absolute top-4 right-4 text-white hover:text-gray-300 z-20">
 				<svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-			</button>
-			<button @click="navigateImage(-1)" class="absolute left-4 top-1/2 -translate-y-1/2 z-20 p-2 text-white hover:text-gray-300 disabled:opacity-30"
-				:disabled="files.length <= 1">
-				<svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
-			</button>
-			<button @click="navigateImage(1)" class="absolute right-4 top-1/2 -translate-y-1/2 z-20 p-2 text-white hover:text-gray-300 disabled:opacity-30"
-				:disabled="files.length <= 1">
+			</button>				<button @click="navigateImage(-1)" class="absolute left-4 top-1/2 -translate-y-1/2 z-20 p-2 text-white hover:text-gray-300 disabled:opacity-30"
+					:disabled="(activeTab === 'input' ? inputFiles : files).length <= 1">
+					<svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+				</button>
+				<button @click="navigateImage(1)" class="absolute right-4 top-1/2 -translate-y-1/2 z-20 p-2 text-white hover:text-gray-300 disabled:opacity-30"
+					:disabled="(activeTab === 'input' ? inputFiles : files).length <= 1">
 				<svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
 			</button>
 			<div class="relative max-w-[95vw] max-h-[95vh] flex flex-col items-center bg-gray-900/50 rounded-lg p-2">
@@ -730,7 +776,7 @@
 						solidityThresh: 0.50,
 						medianBlur: 5,
 						openKernel: 7,
-						closeKernel: 7,
+						closeKernel: 5,
 						spectralKMeans: false,
 						spatialCluster: false,
 						spatialMergeDist: 50,
@@ -738,6 +784,7 @@
 						spectralGapGuard: 0.85,
 						gentleMode: false,
 						gentleRadius: 0.38,
+						mossFilter: false,
 					},
 					optimize: true,
 					calc: {
@@ -776,9 +823,10 @@
 				// persist config to localStorage (JSON.stringify(regex) -> "{}").
 				rgPatternGroup: /[^_]+_\d{3}/,
 				running: false,
-				logs: '',
-				files: [],
-				loadingFiles: false,
+				logs: '',							files: [],
+							inputFiles: [],
+							loadingFiles: false,
+							loadingInputFiles: false,
 				viewDir: 'vegetation_index',
 				modalOpen: false,
 				modalImage: 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=',
@@ -911,6 +959,7 @@
 					if (pre.spectralGapGuard != preDef.spectralGapGuard) cmd += ` --spectral-gap-guard ${pre.spectralGapGuard}`;
 					if (pre.gentleMode) cmd += ' --gentle';
 					if (pre.gentleRadius != preDef.gentleRadius) cmd += ` --gentle-radius ${pre.gentleRadius}`;
+					if (pre.mossFilter) cmd += ' --moss';
 					const indices = Object.keys(this.config.calc).filter(k => this.config.calc[k]).map(k => k.toLowerCase());
 					if (indices.length > 0) {
 						cmd += ` --veg-idx ${indices.join(',')}`;
@@ -1042,9 +1091,27 @@
 							}
 						});
 					}
-				},
+				},					async fetchInputFiles() {
+						this.loadingInputFiles = true;
+						try {
+							const response = await fetch(`/list?dir=${encodeURIComponent(this.config.inDir || '.input')}`);
+							const data = await response.json();
+							if (Array.isArray(data)) {
+								this.inputFiles = data.filter(f => {
+									let ext = f.ext.toLowerCase();										return !f.isDirectory && (ext === '.jpg' || ext === '.jpeg' || ext === '.png');
+								});
+							} else {
+								this.inputFiles = [];
+							}
+						} catch (err) {
+							console.error('Failed to fetch input files', err);
+							this.inputFiles = [];
+						} finally {
+							this.loadingInputFiles = false;
+						}
+					},
 
-				async fetchOutputFiles() {
+					async fetchOutputFiles() {
 					this.loadingFiles = true;
 					try {
 						const response = await fetch(`/list?dir=${encodeURIComponent(this.currentPath)}`);
@@ -1092,24 +1159,29 @@
 					}
 				},
 
-				openModal(file) {
-					this.modalIndex = this.files.findIndex(f => f.name === file.name);
-					this.setModalImage(file);
-				},
+					openModal(file) {
+						this.modalIndex = this.files.findIndex(f => f.name === file.name);
+						this.setModalImage('/' + this.currentPath + '/' + file.name, file.name);
+					},
 
-				setModalImage(file) {
-					this.modalImage = '/'/*IMPORTANT: relative path*/ + this.currentPath + '/' + file.name;
-					this.modalTitle = file.name;
+					openInputModal(file) {
+						this.modalIndex = this.inputFiles.findIndex(f => f.name === file.name);
+						this.setModalImage('/' + (this.config.inDir || '.input') + '/' + file.name, file.name);
+					},
+
+					setModalImage(src, name) {
+						this.modalImage = src;						this.modalTitle = name;
 					this.modalOpen = true;
 					this.linePoints = [];
 					this.showProfileModal = false;
-				},
-
-				navigateImage(dir) {
-					if (!this.files.length) return;
-					const n = this.files.length;
-					this.modalIndex = (this.modalIndex + dir + n) % n;
-					this.setModalImage(this.files[this.modalIndex]);
+				},						navigateImage(dir) {
+							const list = this.activeTab === 'input' ? this.inputFiles : this.files;
+							if (!list.length) return;
+							const n = list.length;
+							this.modalIndex = (this.modalIndex + dir + n) % n;
+							const f = list[this.modalIndex];
+							const base = this.activeTab === 'input' ? '/' + (this.config.inDir || '.input') : '/' + this.currentPath;
+							this.setModalImage(base + '/' + f.name, f.name);
 				},
 
 				handleModalImageClick(e) {
@@ -1498,6 +1570,26 @@
 					this.config.greenCentroidRadius = '500,400';
 				},
 
+				resetPreprocess() {
+					this.config.preprocess = {
+						textureThresh: 32.0,
+						ndviThresh: 0.12,
+						minAreaRatio: 0.0015,
+						solidityThresh: 0.50,
+						medianBlur: 5,
+						openKernel: 7,
+						closeKernel: 5,
+						spectralKMeans: false,
+						spatialCluster: false,
+						spatialMergeDist: 50,
+						spectralConsistencyFilter: true,
+						spectralGapGuard: 0.85,
+						gentleMode: false,
+						gentleRadius: 0.38,
+						mossFilter: false,
+					};
+				},
+
 				openColorPicker() {
 					this.colorOpen = true;
 					this.colorMsg = '';
@@ -1738,10 +1830,11 @@
 					// Defer background fetches until the page has finished loading.
 					// Requests started before the load event keep the tab spinner
 					// spinning (a fixed 100ms timer is unreliable on slow machines).
-					const startBackgroundFetches = () => {
-						this.fetchOutputFiles();
-						this.fetchReportFiles();
-					};
+					const						startBackgroundFetches = () => {
+							this.fetchOutputFiles();
+							this.fetchInputFiles();
+							this.fetchReportFiles();
+						};
 					if (document.readyState === 'complete') {
 						startBackgroundFetches();
 					} else {
