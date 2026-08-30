@@ -14,7 +14,9 @@ OPENCVLIB_WIN="-Ic:/opencv -Ic:/opencv/include -Lc:/opencv/x64/mingw/lib/ -lopen
 RAYLIB="-Iraylib/include -Lraylib/lib -lraylib"
 WINGUILIB="-DWINGUI -lopengl32 -lgdi32 -lwinmm -lcomdlg32 -lcomctl32 -lole32 -lshell32 -luuid"
 RELEASE_FILES="calib-web.exe calib-web-node.bat calib-web-gui.bat calib-window-gui.bat window_build/ .input_ref/ webui/ package.json UAV_Plant_Calibration.url How_To_Use.md"
+SOURCE_FILES="src/ run.sh ARCHITECTURE.md"
 RELEASE_FILES_WIN=${RELEASE_FILES// /\,}
+SOURCE_FILES_WIN=${SOURCE_FILES// /\,}
 RELEASE_TIME="$(date +'%Y%m%d_%H%M')"
 
 echo ""
@@ -134,7 +136,7 @@ case "$1" in
     ###############################################################################################
     
     "release:zip")
-        run_cmd zip -r release_$RELEASE_TIME.zip $RELEASE_FILES
+        run_cmd zip -r release_$RELEASE_TIME.zip $RELEASE_FILES $SOURCE_FILES
         rm -rf .tmp
             mkdir -p .tmp/.input .tmp/.output
             pushd .tmp
@@ -143,7 +145,7 @@ case "$1" in
         rm -rf .tmp
         ;;
     "release:win")
-        run_cmd Compress-Archive -Path $RELEASE_FILES_WIN -DestinationPath release_$RELEASE_TIME.zip -Force -Verbose
+        run_cmd Compress-Archive -Path "$RELEASE_FILES_WIN,$SOURCE_FILES_WIN" -DestinationPath release_$RELEASE_TIME.zip -Force -Verbose
         ;;
     
     ###############################################################################################        

@@ -659,9 +659,10 @@ RadioCoeffs getRadiometricCoeffs(const Mat& img, const string& filename, Point i
 	else { coeffs.dns = dns_r; }
 
 	if (autoDetectThickness >= 0) {
-		if (!exists(radioDir)) create_directories(radioDir);
+		string debugDir = path(radioDir).parent_path().string() + "/debug";
+		if (!exists(debugDir)) create_directories(debugDir);
 		if (haveBoardRect) rectangle(display, boardRect, Scalar(0, 255, 255), 2);
-		imwrite(radioDir + "/" + filename + "_board_preview.jpg", display);
+		imwrite(debugDir + "/" + filename + "_board_preview.jpg", display);
 	}
 
 	auto solveCoeffs = [](const vector<double>& dns, const vector<double>& tgts) -> pair<double, double> {
@@ -912,9 +913,10 @@ RadioCoeffs getRadiometricCoeffsByEdge(const Mat& img, const string& filename, P
 	else { coeffs.dns = dns_r; }
 
 	if (autoDetectThickness >= 0) {
-		if (!exists(radioDir)) create_directories(radioDir);
+		string debugDir = path(radioDir).parent_path().string() + "/debug";
+		if (!exists(debugDir)) create_directories(debugDir);
 		if (haveBoardRect) rectangle(display, boardRect, Scalar(0, 255, 255), 2);
-		imwrite(radioDir + "/" + filename + "_board_preview.jpg", display);
+		imwrite(debugDir + "/" + filename + "_board_preview.jpg", display);
 	}
 
 	auto solveCoeffs = [](const vector<double>& dns, const vector<double>& tgts) -> pair<double, double> {

@@ -359,10 +359,12 @@ int main(int argc, char** argv) {
 	string alignDir = outDir + "/alignment";
 	string radioDir = outDir + "/radiometric";
 	string vegidxDir = outDir + "/vegetation_index";
+	string debugDir = outDir + "/debug";
 
 	create_directories(alignDir);
 	create_directories(radioDir);
 	create_directories(vegidxDir);
+	create_directories(debugDir);
 
 	gLog << "Calibrated images: " << alignDir << endl;
 	gLog << "Radiometric images: " << radioDir << endl;
@@ -749,7 +751,7 @@ int main(int argc, char** argv) {
 			gLog << "\n    Step D: Calculating " << vegIdx << " for group " << prefix << "..." << endl;
 			clock_t startD = clock();
 
-			imwrite(vegidxDir + "/" + prefix + "_mask.jpg", commonMask);
+			// imwrite(debugDir + "/" + prefix + "_mask.jpg", commonMask);
 
 			Mat indexImg = calculateVegIndex(vegIdx, alignedBands, commonMask);
 			
@@ -800,7 +802,7 @@ int main(int argc, char** argv) {
 				}
 
 				if (vegIdx == requestedVegIndices[0]) { // Save mask preview once
-					imwrite(vegidxDir + "/" + prefix + "_green_mask.tif", composite);
+					imwrite(debugDir + "/" + prefix + "_green_mask.jpg", composite);
 				}
 			}
 
@@ -813,7 +815,7 @@ int main(int argc, char** argv) {
 
 			// Save colorized index
 			Mat index_u8 = contrastStretch(indexImg);
-			imwrite(vegidxDir + "/" + prefix + "_" + vegIdx + "_u8.jpg", index_u8);
+			// imwrite(debugDir + "/" + prefix + "_" + vegIdx + "_u8.jpg", index_u8);
 
 			Mat index_color;
 			applyColorMap(index_u8, index_color, COLORMAP_JET);
